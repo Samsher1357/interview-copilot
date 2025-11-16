@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer)
 
     // Parse PDF - use dynamic import for Next.js compatibility
-    const pdfParse = (await import('pdf-parse')).default
+    const pdfParse = (await import('pdf-parse')).default as (buffer: Buffer) => Promise<{ text: string }>
     const data = await pdfParse(buffer)
 
     // Extract text
