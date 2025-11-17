@@ -5,11 +5,26 @@ import { User, UserCheck } from 'lucide-react'
 import { useEffect, useRef, useCallback } from 'react'
 
 export function TranscriptPanel() {
-  const { transcripts } = useInterviewStore()
+  const { transcripts, mergeNearbyTranscripts } = useInterviewStore()
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  // Merge nearby transcripts on mobile (runs periodically)
   useEffect(() => {
-    // Auto-scroll to bottom when new transcripts are added (debounced)
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    ) || window.innerWidth < 768
+    
+    if (isMobile && transcripts.length > 1) {
+      // Run merge check very quickly (200ms) for real-time feel while merging
+      const timeoutId = setTimeout(() => {
+        mergeNearbyTranscripts()
+      }, 200)
+      return () => clearTimeout(timeoutId)
+    }
+  }, [transcripts, mergeNearbyTranscripts])
+
+  // Auto-scroll to bottom when new transcripts are added (debounced)
+  useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight

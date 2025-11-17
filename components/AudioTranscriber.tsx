@@ -150,7 +150,7 @@ export function AudioTranscriber() {
               triggerAnalysis()
               transcriptBufferRef.current = null
             }
-          }, 2000) // Wait 2 seconds on mobile when interim results are present
+          }, 800) // Wait 800ms on mobile when interim results are present (for real-time feel)
         }
 
         // Process final transcript with buffering to prevent sentence splitting on mobile
@@ -164,9 +164,9 @@ export function AudioTranscriber() {
           const now = Date.now()
           const isMobile = isMobileRef.current
           
-          // Use much longer timeout on mobile (2000ms) vs desktop (800ms)
-          // Android devices need more time to accumulate all chunks
-          const bufferTimeout = isMobile ? 2000 : 800
+          // Use short timeout for real-time feel: show transcripts quickly but still merge chunks
+          // Very short delay on mobile to maintain real-time nature while preventing splits
+          const bufferTimeout = isMobile ? 600 : 500
 
           // Clear any existing timeout for this buffer
           if (transcriptBufferRef.current?.timeout) {
@@ -225,13 +225,13 @@ export function AudioTranscriber() {
           if (transcriptBufferRef.current) {
             transcriptBufferRef.current.timeout = setTimeout(() => {
               if (transcriptBufferRef.current) {
-                // Double-check: if we received a chunk very recently (within 200ms), wait a bit more
+                // Double-check: if we received a chunk very recently (within 150ms), wait a bit more
                 const timeSinceLastChunk = Date.now() - transcriptBufferRef.current.lastChunkTime
-                if (timeSinceLastChunk < 200 && isMobile) {
-                  // Reset timeout for another 500ms
+                if (timeSinceLastChunk < 150 && isMobile) {
+                  // Reset timeout for another 300ms (shorter for real-time feel)
                   transcriptBufferRef.current.timeout = setTimeout(() => {
                     commitBuffer()
-                  }, 500)
+                  }, 300)
                 } else {
                   commitBuffer()
                 }
