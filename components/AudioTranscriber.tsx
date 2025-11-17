@@ -28,7 +28,11 @@ export function AudioTranscriber() {
     speaker: 'interviewer' | 'applicant'
     timestamp: number
     timeout: NodeJS.Timeout | null
+    lastChunkTime: number
   } | null>(null)
+  
+  // Detect if we're on mobile for longer buffering
+  const isMobileRef = useRef(false)
   
   // Use refs to access latest values without recreating recognition
   const currentLanguageRef = useRef(currentLanguage)
@@ -54,6 +58,11 @@ export function AudioTranscriber() {
 
     setIsSupported(true)
     
+    // Detect mobile device for adaptive buffering
+    isMobileRef.current = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    ) || window.innerWidth < 768
+    
     // Only create recognition instance once
     if (!recognitionRef.current && !isInitializedRef.current) {
       const recognition = new SpeechRecognition()
@@ -66,79 +75,7 @@ export function AudioTranscriber() {
         isStartingRef.current = false
       }
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        let interimTranscript = ''
-        let finalTranscript = ''
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' '
-          } else {
-            interimTranscript += transcript
-          }
-        }
-
-        // Process final transcript with buffering to prevent sentence splitting on mobile
-        if (finalTranscript.trim()) {
-          const speaker = aiService.detectSpeaker(
-            finalTranscript,
-            lastSpeakerRef.current
-          )
-          lastSpeakerRef.current = speaker
-
-          // Clear any existing timeout for this buffer
-          if (transcriptBufferRef.current?.timeout) {
-            clearTimeout(transcriptBufferRef.current.timeout)
-          }
-
-          // If buffer exists and speaker is the same, accumulate text
-          if (transcriptBufferRef.current && transcriptBufferRef.current.speaker === speaker) {
-            transcriptBufferRef.current.text += ' ' + finalTranscript.trim()
-            transcriptBufferRef.current.timestamp = Date.now()
-          } else {
-            // If speaker changed or no buffer, commit previous buffer first
-            if (transcriptBufferRef.current) {
-              const bufferedEntry: TranscriptEntry = {
-                id: `transcript-${Date.now()}-${Math.random()}`,
-                speaker: transcriptBufferRef.current.speaker,
-                text: transcriptBufferRef.current.text.trim(),
-                timestamp: transcriptBufferRef.current.timestamp,
-              }
-              addTranscript(bufferedEntry)
-              triggerAnalysis()
-            }
-
-            // Start new buffer
-            transcriptBufferRef.current = {
-              text: finalTranscript.trim(),
-              speaker,
-              timestamp: Date.now(),
-              timeout: null,
-            }
-          }
-
-          // Set timeout to commit buffer after pause (600ms for mobile, prevents sentence splitting)
-          transcriptBufferRef.current.timeout = setTimeout(() => {
-            if (transcriptBufferRef.current) {
-              const entry: TranscriptEntry = {
-                id: `transcript-${Date.now()}-${Math.random()}`,
-                speaker: transcriptBufferRef.current.speaker,
-                text: transcriptBufferRef.current.text.trim(),
-                timestamp: transcriptBufferRef.current.timestamp,
-              }
-
-              addTranscript(entry)
-              triggerAnalysis()
-              
-              // Clear buffer
-              transcriptBufferRef.current = null
-            }
-          }, 600) // Wait 600ms for more chunks before committing
-        }
-      }
-
-      // Helper function to trigger AI analysis
+      // Helper function to trigger AI analysis (defined outside onresult for scope)
       const triggerAnalysis = () => {
         // Trigger AI analysis immediately for real-time response
         if (analysisTimeoutRef.current) {
@@ -179,6 +116,129 @@ export function AudioTranscriber() {
             setIsAnalyzing(false)
           }
         }, 200) // Optimized delay for faster response
+      }
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let interimTranscript = ''
+        let finalTranscript = ''
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' '
+          } else {
+            interimTranscript += transcript
+          }
+        }
+
+        // On mobile, if we have interim results, it means speech is still ongoing
+        // Reset the buffer timeout to wait longer
+        if (interimTranscript && transcriptBufferRef.current && isMobileRef.current) {
+          if (transcriptBufferRef.current.timeout) {
+            clearTimeout(transcriptBufferRef.current.timeout)
+          }
+          // Extend timeout since speech is still ongoing
+          transcriptBufferRef.current.timeout = setTimeout(() => {
+            if (transcriptBufferRef.current) {
+              const entry: TranscriptEntry = {
+                id: `transcript-${Date.now()}-${Math.random()}`,
+                speaker: transcriptBufferRef.current.speaker,
+                text: transcriptBufferRef.current.text.trim(),
+                timestamp: transcriptBufferRef.current.timestamp,
+              }
+              addTranscript(entry)
+              triggerAnalysis()
+              transcriptBufferRef.current = null
+            }
+          }, 2000) // Wait 2 seconds on mobile when interim results are present
+        }
+
+        // Process final transcript with buffering to prevent sentence splitting on mobile
+        if (finalTranscript.trim()) {
+          const speaker = aiService.detectSpeaker(
+            finalTranscript,
+            lastSpeakerRef.current
+          )
+          lastSpeakerRef.current = speaker
+
+          const now = Date.now()
+          const isMobile = isMobileRef.current
+          
+          // Use much longer timeout on mobile (2000ms) vs desktop (800ms)
+          // Android devices need more time to accumulate all chunks
+          const bufferTimeout = isMobile ? 2000 : 800
+
+          // Clear any existing timeout for this buffer
+          if (transcriptBufferRef.current?.timeout) {
+            clearTimeout(transcriptBufferRef.current.timeout)
+          }
+
+          // Helper to check if text looks like a complete sentence
+          const isCompleteSentence = (text: string): boolean => {
+            const trimmed = text.trim()
+            // Check if ends with sentence-ending punctuation
+            return /[.!?]\s*$/.test(trimmed) || trimmed.length > 100
+          }
+
+          // Helper to commit buffer
+          const commitBuffer = () => {
+            if (transcriptBufferRef.current) {
+              const entry: TranscriptEntry = {
+                id: `transcript-${Date.now()}-${Math.random()}`,
+                speaker: transcriptBufferRef.current.speaker,
+                text: transcriptBufferRef.current.text.trim(),
+                timestamp: transcriptBufferRef.current.timestamp,
+              }
+              addTranscript(entry)
+              triggerAnalysis()
+              transcriptBufferRef.current = null
+            }
+          }
+
+          // If buffer exists and speaker is the same, accumulate text
+          if (transcriptBufferRef.current && transcriptBufferRef.current.speaker === speaker) {
+            transcriptBufferRef.current.text += ' ' + finalTranscript.trim()
+            transcriptBufferRef.current.lastChunkTime = now
+            
+            // If the accumulated text looks like a complete sentence, commit immediately
+            if (isCompleteSentence(transcriptBufferRef.current.text)) {
+              commitBuffer()
+              return
+            }
+          } else {
+            // If speaker changed or no buffer, commit previous buffer first
+            if (transcriptBufferRef.current) {
+              commitBuffer()
+            }
+
+            // Start new buffer
+            transcriptBufferRef.current = {
+              text: finalTranscript.trim(),
+              speaker,
+              timestamp: now,
+              timeout: null,
+              lastChunkTime: now,
+            }
+          }
+
+          // Set timeout to commit buffer after pause (longer on mobile to prevent splitting)
+          if (transcriptBufferRef.current) {
+            transcriptBufferRef.current.timeout = setTimeout(() => {
+              if (transcriptBufferRef.current) {
+                // Double-check: if we received a chunk very recently (within 200ms), wait a bit more
+                const timeSinceLastChunk = Date.now() - transcriptBufferRef.current.lastChunkTime
+                if (timeSinceLastChunk < 200 && isMobile) {
+                  // Reset timeout for another 500ms
+                  transcriptBufferRef.current.timeout = setTimeout(() => {
+                    commitBuffer()
+                  }, 500)
+                } else {
+                  commitBuffer()
+                }
+              }
+            }, bufferTimeout)
+          }
+        }
       }
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {

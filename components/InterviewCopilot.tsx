@@ -66,7 +66,7 @@ export function InterviewCopilot() {
           {/* Left Column - Transcript (40%) */}
           <div className="lg:col-span-2 flex flex-col space-y-3 sm:space-y-4">
             <ControlPanel />
-            <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-5 flex-1 flex flex-col min-h-[400px]">
+            <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-5 flex-1 flex flex-col min-h-[250px] sm:min-h-[300px] lg:min-h-[400px]">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
                   Conversation
