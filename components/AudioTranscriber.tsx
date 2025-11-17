@@ -22,6 +22,14 @@ export function AudioTranscriber() {
   const isInitializedRef = useRef(false)
   const isStartingRef = useRef(false)
   
+  // Buffer for accumulating transcript chunks (to prevent sentence splitting on mobile)
+  const transcriptBufferRef = useRef<{
+    text: string
+    speaker: 'interviewer' | 'applicant'
+    timestamp: number
+    timeout: NodeJS.Timeout | null
+  } | null>(null)
+  
   // Use refs to access latest values without recreating recognition
   const currentLanguageRef = useRef(currentLanguage)
   const autoSpeakRef = useRef(autoSpeak)
@@ -71,7 +79,7 @@ export function AudioTranscriber() {
           }
         }
 
-        // Process final transcript
+        // Process final transcript with buffering to prevent sentence splitting on mobile
         if (finalTranscript.trim()) {
           const speaker = aiService.detectSpeaker(
             finalTranscript,
@@ -79,55 +87,98 @@ export function AudioTranscriber() {
           )
           lastSpeakerRef.current = speaker
 
-          const entry: TranscriptEntry = {
-            id: `transcript-${Date.now()}-${Math.random()}`,
-            speaker,
-            text: finalTranscript.trim(),
-            timestamp: Date.now(),
+          // Clear any existing timeout for this buffer
+          if (transcriptBufferRef.current?.timeout) {
+            clearTimeout(transcriptBufferRef.current.timeout)
           }
 
-          addTranscript(entry)
-
-          // Trigger AI analysis immediately for real-time response
-          if (analysisTimeoutRef.current) {
-            clearTimeout(analysisTimeoutRef.current)
-          }
-
-          // Debounced delay for faster real-time response (200ms for better performance)
-          analysisTimeoutRef.current = setTimeout(async () => {
-            // Get current transcripts from store to ensure we have the latest
-            const currentTranscripts = useInterviewStore.getState().transcripts
-            const { setIsAnalyzing, setError } = useInterviewStore.getState()
-            
-            setIsAnalyzing(true)
-            setError(null)
-            
-            try {
-              const interviewContext = useInterviewStore.getState().interviewContext
-              const responses = await aiService.analyzeConversation(
-                currentTranscripts,
-                currentLanguageRef.current.split('-')[0],
-                interviewContext
-              )
-
-              if (responses.length > 0) {
-                responses.forEach((response) => {
-                  addAIResponse(response)
-                  
-                  // Auto-speak if enabled (prioritize answers)
-                  if (autoSpeakRef.current && (response.type === 'answer' || response.type === 'suggestion')) {
-                    speakText(response.content, currentLanguageRef.current)
-                  }
-                })
+          // If buffer exists and speaker is the same, accumulate text
+          if (transcriptBufferRef.current && transcriptBufferRef.current.speaker === speaker) {
+            transcriptBufferRef.current.text += ' ' + finalTranscript.trim()
+            transcriptBufferRef.current.timestamp = Date.now()
+          } else {
+            // If speaker changed or no buffer, commit previous buffer first
+            if (transcriptBufferRef.current) {
+              const bufferedEntry: TranscriptEntry = {
+                id: `transcript-${Date.now()}-${Math.random()}`,
+                speaker: transcriptBufferRef.current.speaker,
+                text: transcriptBufferRef.current.text.trim(),
+                timestamp: transcriptBufferRef.current.timestamp,
               }
-            } catch (error: any) {
-              console.error('Analysis error:', error)
-              setError(error.message || 'Failed to analyze conversation. Please check your API key.')
-            } finally {
-              setIsAnalyzing(false)
+              addTranscript(bufferedEntry)
+              triggerAnalysis()
             }
-          }, 200) // Optimized delay for faster response
+
+            // Start new buffer
+            transcriptBufferRef.current = {
+              text: finalTranscript.trim(),
+              speaker,
+              timestamp: Date.now(),
+              timeout: null,
+            }
+          }
+
+          // Set timeout to commit buffer after pause (600ms for mobile, prevents sentence splitting)
+          transcriptBufferRef.current.timeout = setTimeout(() => {
+            if (transcriptBufferRef.current) {
+              const entry: TranscriptEntry = {
+                id: `transcript-${Date.now()}-${Math.random()}`,
+                speaker: transcriptBufferRef.current.speaker,
+                text: transcriptBufferRef.current.text.trim(),
+                timestamp: transcriptBufferRef.current.timestamp,
+              }
+
+              addTranscript(entry)
+              triggerAnalysis()
+              
+              // Clear buffer
+              transcriptBufferRef.current = null
+            }
+          }, 600) // Wait 600ms for more chunks before committing
         }
+      }
+
+      // Helper function to trigger AI analysis
+      const triggerAnalysis = () => {
+        // Trigger AI analysis immediately for real-time response
+        if (analysisTimeoutRef.current) {
+          clearTimeout(analysisTimeoutRef.current)
+        }
+
+        // Debounced delay for faster real-time response (200ms for better performance)
+        analysisTimeoutRef.current = setTimeout(async () => {
+          // Get current transcripts from store to ensure we have the latest
+          const currentTranscripts = useInterviewStore.getState().transcripts
+          const { setIsAnalyzing, setError } = useInterviewStore.getState()
+          
+          setIsAnalyzing(true)
+          setError(null)
+          
+          try {
+            const interviewContext = useInterviewStore.getState().interviewContext
+            const responses = await aiService.analyzeConversation(
+              currentTranscripts,
+              currentLanguageRef.current.split('-')[0],
+              interviewContext
+            )
+
+            if (responses.length > 0) {
+              responses.forEach((response) => {
+                addAIResponse(response)
+                
+                // Auto-speak if enabled (prioritize answers)
+                if (autoSpeakRef.current && (response.type === 'answer' || response.type === 'suggestion')) {
+                  speakText(response.content, currentLanguageRef.current)
+                }
+              })
+            }
+          } catch (error: any) {
+            console.error('Analysis error:', error)
+            setError(error.message || 'Failed to analyze conversation. Please check your API key.')
+          } finally {
+            setIsAnalyzing(false)
+          }
+        }, 200) // Optimized delay for faster response
       }
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
@@ -177,6 +228,9 @@ export function AudioTranscriber() {
       // Cleanup on unmount only
       if (analysisTimeoutRef.current) {
         clearTimeout(analysisTimeoutRef.current)
+      }
+      if (transcriptBufferRef.current?.timeout) {
+        clearTimeout(transcriptBufferRef.current.timeout)
       }
     }
   }, [addTranscript, addAIResponse, setIsListening, setError]) // Minimal dependencies
@@ -228,6 +282,22 @@ export function AudioTranscriber() {
       // Stop recognition
       try {
         isStartingRef.current = false
+        
+        // Commit any pending buffer before stopping
+        if (transcriptBufferRef.current) {
+          if (transcriptBufferRef.current.timeout) {
+            clearTimeout(transcriptBufferRef.current.timeout)
+          }
+          const entry: TranscriptEntry = {
+            id: `transcript-${Date.now()}-${Math.random()}`,
+            speaker: transcriptBufferRef.current.speaker,
+            text: transcriptBufferRef.current.text.trim(),
+            timestamp: transcriptBufferRef.current.timestamp,
+          }
+          addTranscript(entry)
+          transcriptBufferRef.current = null
+        }
+        
         recognition.stop()
       } catch (error: any) {
         console.error('Failed to stop recognition:', error)
