@@ -1,14 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useInterviewStore } from '@/lib/store'
-import { AudioTranscriber } from './AudioTranscriber'
+import { DeepgramTranscriber } from './DeepgramTranscriber'
 import { TranscriptPanel } from './TranscriptPanel'
-import { ResponsePanel } from './ResponsePanel'
+import { OptimizedResponsePanel } from './OptimizedResponsePanel'
 import { ControlPanel } from './ControlPanel'
 import { ErrorDisplay } from './ErrorDisplay'
 import { ContextModal } from './ContextModal'
-import { ManualTranscriptInput } from './ManualTranscriptInput'
 import { Languages, Volume2, VolumeX, Settings } from 'lucide-react'
 
 export function InterviewCopilot() {
@@ -16,27 +15,34 @@ export function InterviewCopilot() {
     isListening,
     currentLanguage,
     autoSpeak,
+    simpleEnglish,
     error,
     isAnalyzing,
     interviewContext,
-    setLanguage,
     setAutoSpeak,
+    setSimpleEnglish,
     setError,
     setShowContextModal,
   } = useInterviewStore()
 
-  const [supportedLanguages] = useState([
-    { code: 'en-US', name: 'English (US)' },
-    { code: 'en-GB', name: 'English (UK)' },
-    { code: 'es-ES', name: 'Spanish' },
-    { code: 'fr-FR', name: 'French' },
-    { code: 'de-DE', name: 'German' },
-    { code: 'it-IT', name: 'Italian' },
-    { code: 'pt-BR', name: 'Portuguese' },
-    { code: 'ja-JP', name: 'Japanese' },
-    { code: 'zh-CN', name: 'Chinese (Simplified)' },
-    { code: 'ko-KR', name: 'Korean' },
-  ])
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only if not typing in an input/textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      // Ctrl+K: Open context settings
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowContextModal(true)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [setShowContextModal])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
@@ -71,20 +77,18 @@ export function InterviewCopilot() {
                 <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
                   Conversation
                 </h2>
-                <div className="flex items-center gap-2">
-                  <Languages className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  <select
-                    value={currentLanguage}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="text-xs px-2 py-1 border-0 bg-transparent text-gray-600 dark:text-gray-400 focus:outline-none cursor-pointer"
-                  >
-                    {supportedLanguages.slice(0, 5).map((lang) => (
-                      <option key={lang.code} value={lang.code}>
-                        {lang.name.split(' ')[0]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <button
+                  onClick={() => setSimpleEnglish(!simpleEnglish)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    simpleEnglish
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                  title={simpleEnglish ? 'Simple English enabled' : 'Simple English disabled'}
+                >
+                  <Languages className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Simple</span>
+                </button>
               </div>
               <div className="flex-1 overflow-hidden">
                 <TranscriptPanel />
@@ -98,8 +102,11 @@ export function InterviewCopilot() {
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
-                    AI Answers
+                    AI Answer
                   </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Most recent response
+                  </p>
                   {isAnalyzing && (
                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse"></span>
@@ -124,15 +131,15 @@ export function InterviewCopilot() {
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
-                <ResponsePanel />
+                <OptimizedResponsePanel />
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Audio Transcriber Component */}
-      <AudioTranscriber />
+      {/* Audio Transcriber Component - Using Deepgram for better accuracy */}
+      <DeepgramTranscriber />
       
       {/* Error Display */}
       <ErrorDisplay error={error} onDismiss={() => setError(null)} />
@@ -140,8 +147,6 @@ export function InterviewCopilot() {
       {/* Context Modal */}
       <ContextModal />
       
-      {/* Manual Transcript Input */}
-      <ManualTranscriptInput />
     </div>
   )
 }

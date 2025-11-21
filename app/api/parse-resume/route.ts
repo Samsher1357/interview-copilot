@@ -4,7 +4,7 @@ export async function POST(request: NextRequest) {
   try {
     const { resumeText } = await request.json()
 
-    const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY
 
     if (!OPENAI_API_KEY) {
       return NextResponse.json(

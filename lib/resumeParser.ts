@@ -11,11 +11,7 @@ export interface ParsedResume {
 }
 
 export async function parseResumeText(resumeText: string): Promise<ParsedResume> {
-  const OPENAI_API_KEY = process.env.NEXT_PUBLIC_OPENAI_API_KEY
-
-  if (!OPENAI_API_KEY) {
-    throw new Error('OpenAI API key not configured')
-  }
+  // This function calls the API route, so no API key needed here
 
   try {
     const response = await fetch('/api/parse-resume', {

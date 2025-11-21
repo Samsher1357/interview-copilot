@@ -2,12 +2,12 @@
 
 import { useInterviewStore, AIResponse } from '@/lib/store'
 import { Lightbulb, HelpCircle, MessageSquare, CheckCircle, Volume2 } from 'lucide-react'
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useMemo, useCallback } from 'react'
 import { FormattedContent } from './FormattedContent'
+import { AnalyzingIndicator } from './LoadingSkeleton'
 
 export function ResponsePanel() {
-  const { aiResponses, autoSpeak, currentLanguage, isAnalyzing } = useInterviewStore()
-  const [selectedResponse, setSelectedResponse] = useState<string | null>(null)
+  const { aiResponses, currentLanguage, isAnalyzing } = useInterviewStore()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -104,15 +104,11 @@ export function ResponsePanel() {
 
   if (aiResponses.length === 0) {
     return (
-      <div className="text-center py-8 sm:py-12 text-gray-500 dark:text-gray-400 h-full flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         {isAnalyzing ? (
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-sm sm:text-base font-medium">Analyzing conversation...</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500">Generating answer in real-time</p>
-          </div>
+          <AnalyzingIndicator />
         ) : (
-          <div className="space-y-2">
+          <div className="text-center py-8 sm:py-12 text-gray-500 dark:text-gray-400 space-y-2">
             <p className="text-sm sm:text-base font-medium">
               AI answers will appear here
             </p>

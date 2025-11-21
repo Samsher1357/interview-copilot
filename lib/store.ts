@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
+import { UserRole } from './services/AIAnalysisService'
 
 export interface TranscriptEntry {
   id: string
@@ -31,37 +33,64 @@ interface InterviewState {
   aiResponses: AIResponse[]
   currentLanguage: string
   autoSpeak: boolean
+  simpleEnglish: boolean
   error: string | null
   isAnalyzing: boolean
   interviewContext: InterviewContext
   showContextModal: boolean
+  sessionStartTime: number | null
+  userRole: UserRole
   
   setIsListening: (isListening: boolean) => void
+  setUserRole: (role: UserRole) => void
   addTranscript: (entry: TranscriptEntry) => void
   addAIResponse: (response: AIResponse) => void
+  updateAIResponse: (id: string, updates: Partial<AIResponse>) => void
+  removeAIResponse: (id: string) => void
   mergeNearbyTranscripts: () => void
   setLanguage: (lang: string) => void
   setAutoSpeak: (enabled: boolean) => void
+  setSimpleEnglish: (enabled: boolean) => void
   setError: (error: string | null) => void
   setIsAnalyzing: (isAnalyzing: boolean) => void
   setInterviewContext: (context: InterviewContext) => void
   setShowContextModal: (show: boolean) => void
   clearTranscripts: () => void
   clearResponses: () => void
+  clearAll: () => void
+  exportData: () => string
 }
 
-export const useInterviewStore = create<InterviewState>((set) => ({
-  isListening: false,
-  transcripts: [],
-  aiResponses: [],
-  currentLanguage: 'en-US',
-  autoSpeak: false,
-  error: null,
-  isAnalyzing: false,
-  interviewContext: {},
-  showContextModal: false,
+// Helper to safely access localStorage
+const getLocalStorage = () => {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export const useInterviewStore = create<InterviewState>()(
+  persist(
+    (set, get) => ({
+      isListening: false,
+      transcripts: [],
+      aiResponses: [],
+      currentLanguage: 'en-US',
+      autoSpeak: false,
+      simpleEnglish: false,
+      error: null,
+      isAnalyzing: false,
+      interviewContext: {},
+      showContextModal: false,
+      sessionStartTime: null,
+      userRole: 'applicant',
   
-  setIsListening: (isListening) => set({ isListening }),
+  setIsListening: (isListening) => set((state) => ({
+    isListening,
+    sessionStartTime: isListening && !state.sessionStartTime ? Date.now() : state.sessionStartTime
+  })),
+  setUserRole: (role) => set({ userRole: role }),
   addTranscript: (entry) => set((state) => {
     const transcripts = [...state.transcripts]
     const lastTranscript = transcripts[transcripts.length - 1]
@@ -131,13 +160,59 @@ export const useInterviewStore = create<InterviewState>((set) => ({
   addAIResponse: (response) => set((state) => ({
     aiResponses: [...state.aiResponses, response]
   })),
+  updateAIResponse: (id, updates) => set((state) => ({
+    aiResponses: state.aiResponses.map(r => 
+      r.id === id ? { ...r, ...updates } : r
+    )
+  })),
+  removeAIResponse: (id) => set((state) => ({
+    aiResponses: state.aiResponses.filter(r => r.id !== id)
+  })),
   setLanguage: (lang) => set({ currentLanguage: lang }),
   setAutoSpeak: (enabled) => set({ autoSpeak: enabled }),
+  setSimpleEnglish: (enabled) => set({ simpleEnglish: enabled }),
   setError: (error) => set({ error }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
   setInterviewContext: (context) => set({ interviewContext: context }),
   setShowContextModal: (show) => set({ showContextModal: show }),
   clearTranscripts: () => set({ transcripts: [] }),
   clearResponses: () => set({ aiResponses: [] }),
-}))
+  clearAll: () => set({
+    transcripts: [],
+    aiResponses: [],
+    sessionStartTime: null,
+    isListening: false,
+    error: null,
+  }),
+  exportData: () => {
+    const state = get()
+    return JSON.stringify({
+      sessionStartTime: state.sessionStartTime,
+      interviewContext: state.interviewContext,
+      transcripts: state.transcripts,
+      aiResponses: state.aiResponses,
+      exportedAt: Date.now(),
+    }, null, 2)
+  },
+}),
+    {
+      name: 'interview-copilot-storage',
+      storage: createJSONStorage(() => getLocalStorage() || ({
+        getItem: () => null,
+        setItem: () => {},
+        removeItem: () => {},
+      })),
+      partialize: (state) => ({
+        transcripts: state.transcripts,
+        aiResponses: state.aiResponses,
+        currentLanguage: state.currentLanguage,
+        autoSpeak: state.autoSpeak,
+        simpleEnglish: state.simpleEnglish,
+        interviewContext: state.interviewContext,
+        sessionStartTime: state.sessionStartTime,
+        userRole: state.userRole,
+      }),
+    }
+  )
+)
 
