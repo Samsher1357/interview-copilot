@@ -2,6 +2,30 @@
 
 A professional-grade, **bidirectional** AI Interview Copilot that provides real-time assistance for **both interviewers AND applicants**. Listen to live conversations, get instant AI-powered insights, and conduct better interviews with role-specific guidance.
 
+## 🏗️ Project Structure
+
+This is a monorepo containing separate frontend and backend applications:
+
+```
+interview-copilot/
+├── frontend/          # Next.js frontend application
+│   ├── app/          # Next.js app directory
+│   ├── components/   # React components
+│   ├── lib/          # Frontend utilities and services
+│   ├── types/        # TypeScript type definitions
+│   └── package.json  # Frontend dependencies
+│
+├── backend/          # Express.js backend server
+│   ├── src/          # Backend source code
+│   │   ├── routes/   # API routes
+│   │   ├── services/ # Business logic
+│   │   ├── socket/   # WebSocket handlers
+│   │   └── server.ts # Server entry point
+│   └── package.json  # Backend dependencies
+│
+└── package.json      # Root workspace configuration
+```
+
 ## 🆕 What's New in v2.0
 
 - **🎯 Complete Conversation Analysis**: Analyzes BOTH interviewer and applicant speech
@@ -53,7 +77,14 @@ A professional-grade, **bidirectional** AI Interview Copilot that provides real-
 - Deepgram API key (for speech recognition) - [Get free API key](https://console.deepgram.com)
 - Modern browser with microphone access (Chrome, Edge, Firefox, or Safari)
 
-## Installation
+## Quick Start
+
+### Prerequisites
+
+- Node.js >= 18.0.0
+- npm >= 9.0.0
+
+### Installation
 
 1. Clone the repository:
 ```bash
@@ -61,75 +92,119 @@ git clone <repository-url>
 cd interview-copilot
 ```
 
-2. Install dependencies:
+2. Install all dependencies:
 ```bash
+npm run install:all
+```
+
+Or install manually:
+```bash
+# Install root dependencies
+npm install
+
+# Install frontend dependencies
+cd frontend
+npm install
+
+# Install backend dependencies
+cd ../backend
 npm install
 ```
 
-3. Create a `.env.local` file in the root directory:
+3. Configure environment variables:
 
-**Option A: Using OpenAI (Default)**
+**Create `.env.local` in the ROOT directory** (both frontend and backend use this single file):
+```bash
+cp .env.example .env.local
+```
+
+Edit `.env.local` and add your API keys:
 ```env
-# OpenAI Configuration
-OPENAI_API_KEY=your_openai_api_key_here
+# Frontend Configuration
+NEXT_PUBLIC_API_URL=http://localhost:3001
+
+# Backend Configuration
+PORT=3001
+CORS_ORIGIN=http://localhost:3000
+
+# AI Provider (choose 'openai' or 'gemini')
 AI_PROVIDER=openai
-
-# OpenAI Model Selection (optional, default: gpt-4o-mini)
-# Options: gpt-3.5-turbo (cheapest, higher limits), gpt-4o-mini (default), gpt-4, gpt-4o
+OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o-mini
-
-# Maximum tokens for AI responses (optional, default: 1200)
-AI_MAX_TOKENS=1200
-
-# Deepgram API Key (for speech recognition)
-DEEPGRAM_API_KEY=your_deepgram_api_key_here
-
-NEXT_PUBLIC_AUTO_SPEAK=false
-```
-
-**Option B: Using Google Gemini (Free, Fast!)**
-```env
-# Google Gemini Configuration
+# OR use Gemini (FREE!)
 GOOGLE_API_KEY=your_google_api_key_here
-AI_PROVIDER=gemini
-
-# Gemini Model Selection (optional, default: gemini-1.5-flash)
-# Options: gemini-1.5-flash (free, fastest), gemini-1.5-pro (more powerful, free tier)
 GEMINI_MODEL=gemini-1.5-flash
-
-# Maximum tokens for AI responses (optional, default: 1200)
 AI_MAX_TOKENS=1200
 
-# Deepgram API Key (for speech recognition)
+# Deepgram Configuration (Required)
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
-
-NEXT_PUBLIC_AUTO_SPEAK=false
 ```
+
+**Important:** 
+- Both frontend and backend read from this single `.env.local` file in the root directory
+- Frontend (Next.js) automatically reads variables prefixed with `NEXT_PUBLIC_`
+- Backend loads the file via `src/config/env.ts`
+- All API keys are managed by the backend for security
 
 **Getting API Keys:**
 - **OpenAI:** https://platform.openai.com/api-keys
 - **Google Gemini (FREE):** https://makersuite.google.com/app/apikey
 - **Deepgram (FREE):** https://console.deepgram.com
 
-**Troubleshooting Rate Limits:**
-If you see "Rate limit reached" errors:
-- **Option 1:** Switch to Gemini: `AI_PROVIDER=gemini` (FREE!)
-- **Option 2:** Use cheaper OpenAI model: `OPENAI_MODEL=gpt-3.5-turbo`
-- **Option 3:** Reduce tokens: `AI_MAX_TOKENS=800`
-- **Option 4:** Add payment method at [OpenAI Billing](https://platform.openai.com/account/billing)
-- **Option 5:** Wait for quota to reset (shown in error message)
+### Development
 
-**Note**: 
-- For better security, use `OPENAI_API_KEY` (server-side only) instead of `NEXT_PUBLIC_OPENAI_API_KEY`
-- Deepgram API key is required for speech recognition. Get a free API key at [Deepgram Console](https://console.deepgram.com)
-- The app uses Deepgram for professional-grade speech recognition with better accuracy than browser Web Speech API
-
-4. Run the development server:
+Run both frontend and backend concurrently:
 ```bash
 npm run dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+Or run them separately:
+```bash
+# Frontend only (runs on port 3000)
+npm run dev:frontend
+
+# Backend only (runs on port 3001)
+npm run dev:backend
+```
+
+The application will be available at:
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend: [http://localhost:3001](http://localhost:3001)
+
+### Production Build
+
+Build both applications:
+```bash
+npm run build
+```
+
+Start both applications:
+```bash
+npm run start
+```
+
+## Available Scripts
+
+### Root Level
+
+- `npm run dev` - Run both frontend and backend in development mode
+- `npm run build` - Build both applications for production
+- `npm run start` - Start both applications in production mode
+- `npm run install:all` - Install dependencies for all workspaces
+- `npm run clean` - Remove all node_modules and build artifacts
+- `npm run lint` - Run linters for both applications
+
+### Frontend
+
+- `npm run dev:frontend` - Run frontend development server
+- `npm run build:frontend` - Build frontend for production
+- `npm run start:frontend` - Start frontend production server
+
+### Backend
+
+- `npm run dev:backend` - Run backend development server
+- `npm run build:backend` - Build backend for production
+- `npm run start:backend` - Start backend production server
 
 ## Usage
 
@@ -216,69 +291,96 @@ The AI detects what you're doing and provides **appropriate help**:
 
 **Note**: The app uses Deepgram for speech recognition, which works in all modern browsers (unlike Web Speech API which has limited browser support).
 
-## Project Structure
+## Detailed Project Structure
 
 ```
 interview-copilot/
-├── app/
-│   ├── layout.tsx                   # Root layout
-│   ├── page.tsx                     # Main page
-│   ├── globals.css                  # Global styles
-│   └── api/
-│       ├── analyze-stream/          # Streaming analysis endpoint (role-aware)
-│       ├── deepgram/                # Deepgram WebSocket endpoint
-│       ├── parse-pdf/               # PDF parsing
-│       ├── parse-resume/            # Resume parsing
-│       └── socket/                  # Socket.IO endpoint
-├── components/
-│   ├── InterviewCopilot.tsx         # Main component
-│   ├── RoleSelector.tsx             # 🆕 Role selection UI
-│   ├── DeepgramTranscriber.tsx     # Speech recognition (role-aware)
-│   ├── ControlPanel.tsx            # Control buttons
-│   ├── TranscriptPanel.tsx         # Transcript display
-│   ├── ResponsePanel.tsx           # AI responses display
-│   └── ContextModal.tsx            # Context settings
-├── lib/
-│   ├── store.ts                     # Zustand state management (with role)
-│   ├── langchainService.ts         # LangChain.js with role support
-│   ├── deepgramService.ts          # Deepgram client service
-│   ├── socket-server.ts            # Socket.IO server with events
-│   ├── services/                    # 🆕 Service Layer
-│   │   ├── TranscriptionService.ts  # Deepgram management
-│   │   ├── AIAnalysisService.ts     # Role-aware AI analysis
-│   │   ├── RolePromptStrategy.ts    # Role-specific prompts
-│   │   ├── ConfigurationService.ts  # Settings management
-│   │   └── RealtimeEventService.ts  # WebSocket events
-│   └── hooks/
-│       ├── useDeepgram.ts           # Deepgram client hook
-│       ├── useSocket.ts             # Socket.IO client hook
-│       └── useStreamingAnalysis.ts  # Streaming analysis (role-aware)
-├── ARCHITECTURE.md                   # 🆕 Architecture documentation
-├── IMPROVEMENTS.md                   # 🆕 Improvements summary
-└── package.json
+├── frontend/                         # Next.js Frontend Application
+│   ├── app/
+│   │   ├── layout.tsx                   # Root layout
+│   │   ├── page.tsx                     # Main page
+│   │   ├── globals.css                  # Global styles
+│   │   └── api/
+│   │       ├── analyze-stream/          # Streaming analysis endpoint
+│   │       ├── deepgram/                # Deepgram WebSocket endpoint
+│   │       ├── parse-pdf/               # PDF parsing
+│   │       ├── parse-resume/            # Resume parsing
+│   │       └── socket/                  # Socket.IO endpoint
+│   ├── components/
+│   │   ├── InterviewCopilot.tsx         # Main component
+│   │   ├── RoleSelector.tsx             # Role selection UI
+│   │   ├── DeepgramTranscriber.tsx     # Speech recognition
+│   │   ├── ControlPanel.tsx            # Control buttons
+│   │   ├── TranscriptPanel.tsx         # Transcript display
+│   │   ├── ResponsePanel.tsx           # AI responses display
+│   │   └── ContextModal.tsx            # Context settings
+│   ├── lib/
+│   │   ├── store.ts                     # Zustand state management
+│   │   ├── langchainService.ts         # LangChain.js integration
+│   │   ├── deepgramService.ts          # Deepgram client service
+│   │   ├── socket-server.ts            # Socket.IO server
+│   │   ├── services/                    # Service Layer
+│   │   │   ├── TranscriptionService.ts  # Deepgram management
+│   │   │   ├── AIAnalysisService.ts     # AI analysis
+│   │   │   ├── RolePromptStrategy.ts    # Role-specific prompts
+│   │   │   ├── ConfigurationService.ts  # Settings management
+│   │   │   └── RealtimeEventService.ts  # WebSocket events
+│   │   └── hooks/
+│   │       ├── useDeepgram.ts           # Deepgram hook
+│   │       ├── useSocket.ts             # Socket.IO hook
+│   │       └── useStreamingAnalysis.ts  # Streaming analysis
+│   ├── types/                           # TypeScript types
+│   ├── package.json                     # Frontend dependencies
+│   └── README.md                        # Frontend documentation
+│
+├── backend/                          # Express.js Backend Server
+│   ├── src/
+│   │   ├── server.ts                    # Server entry point
+│   │   ├── routes/                      # API routes
+│   │   │   ├── analyze-stream.ts        # Streaming analysis
+│   │   │   ├── analyze.ts               # Standard analysis
+│   │   │   ├── deepgram.ts              # Deepgram routes
+│   │   │   ├── index.ts                 # Route aggregator
+│   │   │   └── resume.ts                # Resume parsing
+│   │   ├── services/                    # Business logic
+│   │   │   ├── AIAnalysisService.ts     # AI analysis service
+│   │   │   └── langchainService.ts      # LangChain integration
+│   │   ├── socket/                      # WebSocket handlers
+│   │   │   └── socketHandler.ts         # Socket.IO logic
+│   │   └── types/                       # TypeScript types
+│   │       └── index.ts
+│   ├── package.json                     # Backend dependencies
+│   └── README.md                        # Backend documentation
+│
+├── package.json                      # Root workspace config
+└── README.md                         # This file
 ```
 
 ## Technology Stack
 
-### Core Technologies
+### Frontend
 - **Next.js 14**: React framework with App Router
+- **React 18**: UI library
 - **TypeScript**: Type-safe development
 - **Tailwind CSS**: Utility-first styling
+- **Socket.IO Client**: Real-time communication
+- **Zustand**: Lightweight state management
+- **Deepgram SDK**: Speech recognition client
 
-### AI & Speech
-- **LangChain.js**: AI orchestration with streaming support
-- **OpenAI / Gemini**: Flexible AI provider support
-- **Deepgram**: Professional-grade real-time speech recognition with speaker diarization
-
-### Real-time & State
+### Backend
+- **Express.js**: Web server framework
+- **TypeScript**: Type-safe development
 - **Socket.IO**: Real-time bidirectional communication
-- **Zustand**: Lightweight state management with persistence
-- **WebSocket**: Low-latency event streaming
+- **LangChain.js**: AI orchestration with streaming
+- **OpenAI / Google AI**: AI providers
+- **Deepgram SDK**: Speech recognition API
+- **PDF Parser**: Resume parsing
 
 ### Architecture
+- **Monorepo Structure**: Separate frontend and backend
 - **Service Layer Pattern**: Clean separation of concerns
-- **Event-Driven Architecture**: Pub/sub pattern for real-time updates
-- **Role-Based Strategies**: Adaptive AI prompts based on user role
+- **Event-Driven Architecture**: Real-time updates
+- **Role-Based Strategies**: Adaptive AI prompts
 
 ## Configuration
 
