@@ -13,6 +13,7 @@ export function DeepgramTranscriber() {
     currentLanguage,
     autoSpeak,
     simpleEnglish,
+    aiModel,
     addTranscript,
     addAIResponse,
     setIsListening,
@@ -38,6 +39,7 @@ export function DeepgramTranscriber() {
   const currentLanguageRef = useRef(currentLanguage)
   const autoSpeakRef = useRef(autoSpeak)
   const simpleEnglishRef = useRef(simpleEnglish)
+  const aiModelRef = useRef(aiModel)
   const MAX_TRANSCRIPTS_FOR_ANALYSIS = 8 // Optimized for speed
   const questionPattern = /\b(what|why|how|when|where|who|which|could you|would you|can you|tell me|describe|explain|walk me through|give me)\b/i
   const lastAnalysisTimeRef = useRef(0)
@@ -48,7 +50,8 @@ export function DeepgramTranscriber() {
     currentLanguageRef.current = currentLanguage
     autoSpeakRef.current = autoSpeak
     simpleEnglishRef.current = simpleEnglish
-  }, [currentLanguage, autoSpeak, simpleEnglish])
+    aiModelRef.current = aiModel
+  }, [currentLanguage, autoSpeak, simpleEnglish, aiModel])
 
   // Handle Deepgram errors
   useEffect(() => {
@@ -57,10 +60,53 @@ export function DeepgramTranscriber() {
     }
   }, [deepgramError, setError])
 
+  // Enhanced question detection with multiple criteria
   const isLikelyQuestion = (text: string) => {
     const normalized = text.trim().toLowerCase()
     if (!normalized) return false
+    
+    // Clear question mark
     if (normalized.endsWith('?')) return true
+    
+    // Question words at the start of sentence
+    const questionStarters = /^(what|why|how|when|where|who|which|whose|whom|can you|could you|would you|will you|do you|did you|does|is there|are there|have you|has|should|may i ask)/i
+    if (questionStarters.test(normalized)) return true
+    
+    // Common interview question patterns
+    const interviewPatterns = [
+      /tell me (about|more)/i,
+      /describe (your|how|the)/i,
+      /explain (how|why|what|the)/i,
+      /walk me through/i,
+      /give me (an? )?example/i,
+      /what (is|are|was|were|do|does)/i,
+      /how (do|does|did|would|can)/i,
+      /why (do|does|did|is|are)/i,
+      /can you (tell|explain|describe|walk)/i,
+      /have you (ever|worked|done)/i,
+      /talk about/i,
+      /share (your|an?)/i,
+    ]
+    
+    for (const pattern of interviewPatterns) {
+      if (pattern.test(normalized)) return true
+    }
+    
+    // Reject statements that are clearly not questions
+    const statementPatterns = [
+      /^(i think|i believe|i know|yes|no|okay|sure|right|exactly|absolutely|definitely|thank you|thanks)/i,
+      /^(that's|thats|it's|its) (good|great|fine|correct|right|perfect)/i,
+      /\b(just|only|simply) (wanted to|going to|trying to)\b/i,
+    ]
+    
+    for (const pattern of statementPatterns) {
+      if (pattern.test(normalized)) return false
+    }
+    
+    // Check if sentence is long enough and has question characteristics
+    const words = normalized.split(/\s+/).length
+    if (words < 3) return false // Too short to be a meaningful question
+    
     return questionPattern.test(normalized)
   }
 
@@ -81,6 +127,12 @@ export function DeepgramTranscriber() {
 
   // OPTIMIZED: Helper function to trigger AI analysis with smart throttling
   const triggerAnalysis = () => {
+    // CHECK: Don't start new analysis if we're not listening anymore
+    const currentState = useInterviewStore.getState()
+    if (!currentState.isListening || !isMountedRef.current) {
+      return
+    }
+    
     if (analysisTimeoutRef.current) {
       clearTimeout(analysisTimeoutRef.current)
     }
@@ -99,24 +151,49 @@ export function DeepgramTranscriber() {
 
     cancelStreaming()
 
-    // ULTRA-FAST: Immediate trigger for instant response
+    // SMART ANALYSIS: Analyze all meaningful speech
     const currentTranscripts = useInterviewStore.getState().transcripts
     const lastTranscript = currentTranscripts[currentTranscripts.length - 1]
-    // Instant response for questions, minimal delay for others
-    const delay = lastTranscript && isLikelyQuestion(lastTranscript.text) ? 0 : 20
+    
+    // Skip only if transcript is empty or too short
+    if (!lastTranscript || lastTranscript.text.trim().length < 5) {
+      return
+    }
+    
+    // Filter out very short acknowledgments and fillers
+    const normalized = lastTranscript.text.trim().toLowerCase()
+    const ignoredPhrases = /^(ok|okay|yes|no|yeah|yep|nope|uh|um|hmm|ah|eh|right|sure|mhm|uh-huh)$/i
+    if (ignoredPhrases.test(normalized)) {
+      return
+    }
+    
+    // Instant response for questions, quick response for statements
+    const delay = isLikelyQuestion(lastTranscript.text) ? 0 : 100
 
     analysisTimeoutRef.current = setTimeout(async () => {
-      const snapshot = useInterviewStore.getState().transcripts
+      // Double-check we're still listening before proceeding
+      const state = useInterviewStore.getState()
+      if (!state.isListening || !isMountedRef.current) {
+        return
+      }
+      
+      const snapshot = state.transcripts
+      
+      // Final check: abort if no longer listening
+      if (!state.isListening) {
+        return
+      }
+      
       const trimmedTranscripts =
         snapshot.length > MAX_TRANSCRIPTS_FOR_ANALYSIS
           ? snapshot.slice(-MAX_TRANSCRIPTS_FOR_ANALYSIS)
           : snapshot
-      const { setIsAnalyzing, setError } = useInterviewStore.getState()
+      const { setIsAnalyzing, setError } = state
       
-      // Only analyze when interviewer speaks
-      const lastTranscript = trimmedTranscripts[trimmedTranscripts.length - 1]
+      // Verify we still have valid content
+      const currentLastTranscript = trimmedTranscripts[trimmedTranscripts.length - 1]
       
-      if (!lastTranscript) {
+      if (!currentLastTranscript || currentLastTranscript.text.trim().length < 5) {
         return
       }
       
@@ -137,9 +214,11 @@ export function DeepgramTranscriber() {
           currentLanguageRef.current.split('-')[0],
           interviewContext,
           simpleEnglishRef.current,
+          aiModelRef.current,
           (chunk: string) => {
-            // Safety check: ensure component is still mounted
-            if (!isMountedRef.current) {
+            // Safety check: ensure component is still mounted AND still listening
+            const currentState = useInterviewStore.getState()
+            if (!isMountedRef.current || !currentState.isListening) {
               return
             }
             
@@ -305,9 +384,36 @@ export function DeepgramTranscriber() {
       const language = currentLanguageRef.current || 'en-US'
       connect(language, handleTranscript)
     } else {
-      // Stop Deepgram connection
+      // IMMEDIATE STOP: Cancel all ongoing operations first
+      cancelStreaming()
+      
+      // Stop any speech synthesis immediately
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        speechSynthesis.cancel()
+      }
+      
+      // Clear all analysis timeouts immediately
+      if (analysisTimeoutRef.current) {
+        clearTimeout(analysisTimeoutRef.current)
+        analysisTimeoutRef.current = null
+      }
+      
+      // Stop Deepgram connection (this stops microphone)
       disconnect()
       speakerDetectionService.resetHistory()
+      
+      // Clear any streaming response state
+      if (streamingResponseIdRef.current) {
+        const { removeAIResponse } = useInterviewStore.getState()
+        removeAIResponse(streamingResponseIdRef.current)
+        streamingResponseIdRef.current = null
+      }
+      streamingResponseRef.current = ''
+      
+      // Set analyzing to false immediately
+      const { setIsAnalyzing, setError } = useInterviewStore.getState()
+      setIsAnalyzing(false)
+      setError(null) // Clear any error state too
       
       // Commit any pending buffer
       if (transcriptBufferRef.current) {

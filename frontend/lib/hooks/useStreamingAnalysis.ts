@@ -11,6 +11,7 @@ export function useStreamingAnalysis() {
     language: string,
     interviewContext: InterviewContext,
     simpleEnglish: boolean,
+    aiModel: string,
     onChunk: (chunk: string) => void,
     onComplete: (responses: AIResponse[]) => void,
     onError: (error: string) => void
@@ -34,6 +35,7 @@ export function useStreamingAnalysis() {
           language,
           interviewContext,
           simpleEnglish,
+          aiModel,
         }),
         signal: abortControllerRef.current.signal,
       })
@@ -53,6 +55,11 @@ export function useStreamingAnalysis() {
       let fullResponse = ''
 
       while (true) {
+        // Check if request was aborted
+        if (abortControllerRef.current?.signal.aborted) {
+          break
+        }
+        
         const { done, value } = await reader.read()
 
         if (done) break
@@ -67,6 +74,10 @@ export function useStreamingAnalysis() {
               const data = JSON.parse(line.slice(6))
               
               if (data.chunk) {
+                // Double-check abort status before processing chunk
+                if (abortControllerRef.current?.signal.aborted) {
+                  return
+                }
                 fullResponse += data.chunk
                 onChunk(data.chunk)
               }
@@ -145,6 +156,18 @@ export function useStreamingAnalysis() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
+      
+      // Immediately update store to stop analyzing state
+      if (typeof window !== 'undefined') {
+        try {
+          const { useInterviewStore } = require('@/lib/store')
+          const { setIsAnalyzing } = useInterviewStore.getState()
+          setIsAnalyzing(false)
+        } catch (error) {
+          // Fail silently if store is not available
+          console.warn('Could not access store to stop analyzing state:', error)
+        }
+      }
     }
   }, [])
 

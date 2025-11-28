@@ -11,7 +11,7 @@ router.use(apiLimiter)
 // Non-streaming analysis endpoint
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { transcripts, language, interviewContext = {} } = req.body
+    const { transcripts, language, interviewContext = {}, aiModel = 'gpt-4o-mini' } = req.body
 
     // Validate input
     if (!transcripts || !Array.isArray(transcripts)) {
@@ -41,7 +41,8 @@ router.post('/', async (req: Request, res: Response) => {
     const analysis = await langchainService.analyzeConversation(
       transcripts as TranscriptEntry[],
       language || 'en',
-      interviewContext
+      interviewContext,
+      aiModel
     )
 
     const answerResponse = analysis.find(r => r.type === 'answer')

@@ -1,13 +1,13 @@
 'use client'
 
-import { InterviewCopilot } from '@/components/InterviewCopilot'
+import { CleanInterviewUI } from '@/components/CleanInterviewUI'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default function Home() {
   return (
     <ErrorBoundary>
-      <main className="min-h-screen p-4 md:p-8">
-        <InterviewCopilot />
+      <main>
+        <CleanInterviewUI />
       </main>
     </ErrorBoundary>
   )

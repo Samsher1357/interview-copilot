@@ -12,7 +12,7 @@ router.use(streamLimiter)
 // Streaming analysis endpoint
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { transcripts, language, interviewContext = {}, simpleEnglish = false } = req.body
+    const { transcripts, language, interviewContext = {}, simpleEnglish = false, aiModel = 'gpt-4o-mini' } = req.body
 
     // Validate input
     if (!transcripts || !Array.isArray(transcripts)) {
@@ -58,7 +58,8 @@ router.post('/', async (req: Request, res: Response) => {
         trimmedTranscripts,
         language || 'en',
         interviewContext,
-        simpleEnglish
+        simpleEnglish,
+        aiModel
       )) {
         fullResponse += chunk
         buffer += chunk

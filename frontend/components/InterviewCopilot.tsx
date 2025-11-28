@@ -8,12 +8,11 @@ import { OptimizedResponsePanel } from './OptimizedResponsePanel'
 import { ControlPanel } from './ControlPanel'
 import { ErrorDisplay } from './ErrorDisplay'
 import { ContextModal } from './ContextModal'
-import { Languages, Volume2, VolumeX, Settings } from 'lucide-react'
+import { FileText, Volume2, VolumeX, Settings } from 'lucide-react'
 
 export function InterviewCopilot() {
   const {
     isListening,
-    currentLanguage,
     autoSpeak,
     simpleEnglish,
     error,
@@ -86,7 +85,7 @@ export function InterviewCopilot() {
                   }`}
                   title={simpleEnglish ? 'Simple English enabled' : 'Simple English disabled'}
                 >
-                  <Languages className="w-3.5 h-3.5" />
+                  <FileText className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Simple</span>
                 </button>
               </div>

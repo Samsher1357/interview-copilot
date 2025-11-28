@@ -15,29 +15,31 @@ interface AnalysisResult {
 }
 
 export class LangChainService {
-  private llm: BaseChatModel
   private conversationHistory: TranscriptEntry[] = []
   private readonly maxHistoryLength = 20
-  private provider: 'openai' | 'gemini'
+  private llmCache: Map<string, BaseChatModel> = new Map()
 
-  constructor() {
-    const provider = (process.env.AI_PROVIDER || 'openai').toLowerCase()
-    this.provider = provider as 'openai' | 'gemini'
+  private createLLMForModel(modelName: string): BaseChatModel {
+    // Check cache first
+    if (this.llmCache.has(modelName)) {
+      console.log(`✅ Using cached LLM for model: ${modelName}`)
+      return this.llmCache.get(modelName)!
+    }
 
-    const maxTokens = parseInt(process.env.AI_MAX_TOKENS || '800') // Reduced for faster response
+    const maxTokens = parseInt(process.env.AI_MAX_TOKENS || '800')
 
-    if (this.provider === 'gemini') {
+    console.log(`🤖 Creating new LLM instance for model: ${modelName}`)
+
+    let llm: BaseChatModel
+
+    // Determine provider based on model name
+    if (modelName.startsWith('gemini')) {
       const apiKey = process.env.GOOGLE_API_KEY
-
       if (!apiKey) {
-        throw new Error('Google API key not configured. Get one at https://makersuite.google.com/app/apikey')
+        throw new Error('Google API key not configured. Please add GOOGLE_API_KEY to your .env file')
       }
 
-      const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
-
-      console.log(`🤖 Using Google Gemini model: ${modelName} with max ${maxTokens} tokens`)
-
-      this.llm = new ChatGoogleGenerativeAI({
+      llm = new ChatGoogleGenerativeAI({
         model: modelName,
         temperature: 0.7,
         maxOutputTokens: maxTokens,
@@ -45,17 +47,13 @@ export class LangChainService {
         streaming: true,
       })
     } else {
+      // OpenAI models (gpt-4o-mini, gpt-4.1, etc.)
       const apiKey = process.env.OPENAI_API_KEY
-
       if (!apiKey) {
-        throw new Error('OpenAI API key not configured')
+        throw new Error('OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file')
       }
 
-      const modelName = process.env.OPENAI_MODEL || 'gpt-4o-mini'
-
-      console.log(`🤖 Using OpenAI model: ${modelName} with max ${maxTokens} tokens`)
-
-      this.llm = new ChatOpenAI({
+      llm = new ChatOpenAI({
         modelName,
         temperature: 0.7,
         maxTokens,
@@ -64,12 +62,33 @@ export class LangChainService {
         timeout: 30000,
       })
     }
+
+    // Cache the LLM instance
+    this.llmCache.set(modelName, llm)
+    console.log(`💾 Cached LLM instance for model: ${modelName}`)
+
+    return llm
+  }
+
+  constructor() {
+    // Verify at least one API key is configured
+    const hasOpenAI = !!process.env.OPENAI_API_KEY
+    const hasGemini = !!process.env.GOOGLE_API_KEY
+
+    if (!hasOpenAI && !hasGemini) {
+      throw new Error('No AI API keys configured. Please add OPENAI_API_KEY or GOOGLE_API_KEY to your .env file')
+    }
+
+    console.log(`🔑 API Keys available: ${hasOpenAI ? 'OpenAI' : ''} ${hasGemini ? 'Gemini' : ''}`)
+    console.log(`📝 AI models will be selected from the frontend setup screen`)
+    console.log(`🚀 LLM instances will be cached for optimal performance`)
   }
 
   async analyzeConversation(
     transcripts: TranscriptEntry[],
     language: string = 'en',
     interviewContext?: any,
+    aiModel: string = 'gpt-4o-mini',
     onToken?: (token: string) => void
   ): Promise<AIResponse[]> {
     this.conversationHistory = transcripts.slice(-this.maxHistoryLength)
@@ -85,7 +104,7 @@ export class LangChainService {
     }
 
     try {
-      const analysis = await this.getAIAnalysis(transcripts, language, interviewContext, onToken)
+      const analysis = await this.getAIAnalysis(transcripts, language, interviewContext, aiModel, onToken)
       const responses: AIResponse[] = []
 
       if (analysis.answer && analysis.answer.trim()) {
@@ -122,12 +141,16 @@ export class LangChainService {
     transcripts: TranscriptEntry[],
     language: string = 'en',
     interviewContext?: any,
-    simpleEnglish: boolean = false
+    simpleEnglish: boolean = false,
+    aiModel: string = 'gpt-4o-mini'
   ): AsyncGenerator<string, void, unknown> {
     const latestEntry = transcripts[transcripts.length - 1]
     if (!latestEntry || latestEntry.speaker !== 'interviewer') {
       return
     }
+
+    // Dynamically create the LLM based on the selected model
+    const llm = this.createLLMForModel(aiModel)
 
     try {
       const conversationText = transcripts
@@ -203,7 +226,7 @@ CRITICAL: Answer ONLY the most recent question above. Return ONLY the answer tex
         new HumanMessage(`Answer this specific question: "${latestQuestion}"\n\nProvide a direct answer that the applicant can use. Return ONLY the answer text, no JSON structure.`),
       ]
 
-      const stream = await this.llm.stream(messages)
+      const stream = await llm.stream(messages)
 
       let fullResponse = ''
       let buffer = ''
@@ -247,8 +270,11 @@ CRITICAL: Answer ONLY the most recent question above. Return ONLY the answer tex
     transcripts: TranscriptEntry[],
     language: string,
     interviewContext?: any,
+    aiModel: string = 'gpt-4o-mini',
     onToken?: (token: string) => void
   ): Promise<AnalysisResult> {
+    const llm = this.createLLMForModel(aiModel)
+    
     try {
       const conversationText = transcripts
         .map((t) => `${t.speaker === 'interviewer' ? 'Interviewer' : 'You'}: ${t.text}`)
@@ -343,7 +369,7 @@ Provide analysis in JSON format with:
       let fullResponse = ''
 
       if (onToken) {
-        const stream = await this.llm.stream(messages)
+        const stream = await llm.stream(messages)
         for await (const chunk of stream) {
           const content = chunk.content
           if (typeof content === 'string' && content) {
@@ -352,7 +378,7 @@ Provide analysis in JSON format with:
           }
         }
       } else {
-        const response = await this.llm.invoke(messages)
+        const response = await llm.invoke(messages)
         fullResponse = response.content as string
       }
 

@@ -52,7 +52,15 @@ export function ControlPanel() {
   }, [isListening, setIsListening, transcripts.length, aiResponses.length])
 
   const handleToggleListening = () => {
-    setIsListening(!isListening)
+    const newState = !isListening
+    
+    // If stopping, immediately set analyzing to false for instant feedback
+    if (!newState && isAnalyzing) {
+      const { setIsAnalyzing } = useInterviewStore.getState()
+      setIsAnalyzing(false)
+    }
+    
+    setIsListening(newState)
   }
 
   const handleClear = () => {

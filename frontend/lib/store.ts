@@ -33,6 +33,7 @@ interface InterviewState {
   currentLanguage: string
   autoSpeak: boolean
   simpleEnglish: boolean
+  aiModel: string
   error: string | null
   isAnalyzing: boolean
   interviewContext: InterviewContext
@@ -48,6 +49,7 @@ interface InterviewState {
   setLanguage: (lang: string) => void
   setAutoSpeak: (enabled: boolean) => void
   setSimpleEnglish: (enabled: boolean) => void
+  setAiModel: (model: string) => void
   setError: (error: string | null) => void
   setIsAnalyzing: (isAnalyzing: boolean) => void
   setInterviewContext: (context: InterviewContext) => void
@@ -76,6 +78,7 @@ export const useInterviewStore = create<InterviewState>()(
       currentLanguage: 'en-US',
       autoSpeak: false,
       simpleEnglish: false,
+      aiModel: 'gpt-4o-mini',
       error: null,
       isAnalyzing: false,
       interviewContext: {},
@@ -166,6 +169,7 @@ export const useInterviewStore = create<InterviewState>()(
   setLanguage: (lang) => set({ currentLanguage: lang }),
   setAutoSpeak: (enabled) => set({ autoSpeak: enabled }),
   setSimpleEnglish: (enabled) => set({ simpleEnglish: enabled }),
+  setAiModel: (model) => set({ aiModel: model }),
   setError: (error) => set({ error }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
   setInterviewContext: (context) => set({ interviewContext: context }),
@@ -203,6 +207,7 @@ export const useInterviewStore = create<InterviewState>()(
         currentLanguage: state.currentLanguage,
         autoSpeak: state.autoSpeak,
         simpleEnglish: state.simpleEnglish,
+        aiModel: state.aiModel,
         interviewContext: state.interviewContext,
         sessionStartTime: state.sessionStartTime,
       }),
