@@ -1,0 +1,51 @@
+{
+  "version": 2,
+  "name": "interview-copilot",
+  "buildCommand": "npm run build:frontend",
+  "outputDirectory": "frontend/.next",
+  "framework": "nextjs",
+  "installCommand": "npm install && cd frontend && npm install && cd ../backend && npm install",
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/next"
+    },
+    {
+      "src": "backend/src/**/*.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/health",
+      "dest": "backend/src/server.ts"
+    },
+    {
+      "src": "/api/analyze",
+      "dest": "backend/src/routes/analyze.ts"
+    },
+    {
+      "src": "/api/analyze-stream",
+      "dest": "backend/src/routes/analyze-stream.ts"
+    },
+    {
+      "src": "/api/resume",
+      "dest": "backend/src/routes/resume.ts"
+    },
+    {
+      "src": "/api/deepgram",
+      "dest": "backend/src/routes/deepgram.ts"
+    },
+    {
+      "src": "/socket.io/(.*)",
+      "dest": "backend/src/socket/socketHandler.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "frontend/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
