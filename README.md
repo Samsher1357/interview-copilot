@@ -183,6 +183,26 @@ Start both applications:
 npm run start
 ```
 
+## Deployment
+
+### Production Deployment (Recommended)
+
+This application uses a **hybrid deployment strategy**:
+- **Frontend (Next.js)** → Vercel
+- **Backend (Express + Socket.IO)** → Railway
+
+📚 **See deployment guides:**
+- **Quick Start**: [QUICK_DEPLOY.md](QUICK_DEPLOY.md) - Deploy in 10 minutes
+- **Full Guide**: [DEPLOYMENT.md](DEPLOYMENT.md) - Comprehensive deployment documentation
+
+The backend requires a persistent server for WebSocket support, so it cannot run on Vercel's serverless functions. Railway provides a perfect solution with free tier available.
+
+### Local Development
+
+```bash
+npm run dev
+```
+
 ## Available Scripts
 
 ### Root Level
