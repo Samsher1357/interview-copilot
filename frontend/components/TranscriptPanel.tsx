@@ -1,32 +1,17 @@
 'use client'
 
 import { useInterviewStore } from '@/lib/store'
-import { User, UserCheck } from 'lucide-react'
+import { User } from 'lucide-react'
 import { useEffect, useRef, useCallback, useMemo } from 'react'
 
 export function TranscriptPanel() {
-  const { transcripts, mergeNearbyTranscripts } = useInterviewStore()
+  const { transcripts } = useInterviewStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   
   // Memoize displayed transcripts (keep last 100 for performance)
   const displayedTranscripts = useMemo(() => {
     return transcripts.slice(-100)
   }, [transcripts])
-
-  // Merge nearby transcripts on mobile (runs periodically)
-  useEffect(() => {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    ) || window.innerWidth < 768
-    
-    if (isMobile && transcripts.length > 1) {
-      // Run merge check very quickly (200ms) for real-time feel while merging
-      const timeoutId = setTimeout(() => {
-        mergeNearbyTranscripts()
-      }, 200)
-      return () => clearTimeout(timeoutId)
-    }
-  }, [transcripts, mergeNearbyTranscripts])
 
   // Auto-scroll to bottom when new transcripts are added (optimized with RAF)
   useEffect(() => {
@@ -71,28 +56,18 @@ export function TranscriptPanel() {
             <div
               key={entry.id}
               className={`flex gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl ${
-                entry.speaker === 'interviewer'
+                entry.speaker === 'user'
                   ? 'bg-blue-50/80 dark:bg-blue-900/20 border-l-3 border-blue-400'
-                  : entry.speaker === 'applicant'
-                  ? 'bg-emerald-50/80 dark:bg-emerald-900/20 border-l-3 border-emerald-400'
                   : 'bg-gray-50 dark:bg-gray-700/50'
               }`}
             >
           <div className="flex-shrink-0 mt-0.5 sm:mt-1">
-            {entry.speaker === 'interviewer' ? (
-              <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400" />
-            ) : (
-              <User className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
-            )}
+            <User className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300">
-                {entry.speaker === 'interviewer'
-                  ? 'Interviewer'
-                  : entry.speaker === 'applicant'
-                  ? 'You'
-                  : 'System'}
+                {entry.speaker === 'user' ? 'Candidate' : 'System'}
               </span>
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {formatTime(entry.timestamp)}

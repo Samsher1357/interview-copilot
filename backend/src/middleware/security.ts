@@ -67,11 +67,15 @@ export function errorSanitizer(
   const isDevelopment = process.env.NODE_ENV === 'development'
   
   const statusCode = err.statusCode || err.status || 500
-  const message = isDevelopment 
-    ? err.message 
-    : statusCode === 500 
-    ? 'Internal server error' 
-    : err.message || 'An error occurred'
+  
+  let message: string
+  if (isDevelopment) {
+    message = err.message
+  } else if (statusCode === 500) {
+    message = 'Internal server error'
+  } else {
+    message = err.message || 'An error occurred'
+  }
   
   res.status(statusCode).json({
     error: message,

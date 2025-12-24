@@ -2,7 +2,7 @@
 
 import { memo, useMemo } from 'react'
 import { useInterviewStore } from '@/lib/store'
-import { MessageSquare, Lightbulb, Target, Sparkles, Volume2 } from 'lucide-react'
+import { MessageSquare, Lightbulb, Target, Sparkles } from 'lucide-react'
 import { FormattedContent } from './FormattedContent'
 
 // OPTIMIZED: Memoized individual response item
@@ -64,34 +64,15 @@ const ResponseItem = memo(function ResponseItem({ response }: { response: any })
 
   const styles = getStyles(response.type)
 
-  const speakResponse = () => {
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(response.content)
-      utterance.rate = 0.9
-      utterance.pitch = 1.0
-      speechSynthesis.speak(utterance)
-    }
-  }
-
   return (
     <div
       className={`${styles.bg} ${styles.border} border rounded-xl p-4 transition-all hover:shadow-md`}
     >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <div className={styles.icon}>{getIcon(response.type)}</div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-            {styles.title}
-          </h3>
-        </div>
-        <button
-          onClick={speakResponse}
-          className="p-1.5 rounded-lg hover:bg-white/50 dark:hover:bg-gray-800/50 transition-colors"
-          title="Speak this response"
-        >
-          <Volume2 className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" />
-        </button>
+      <div className="flex items-center gap-2 mb-2">
+        <div className={styles.icon}>{getIcon(response.type)}</div>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+          {styles.title}
+        </h3>
       </div>
       <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
         <FormattedContent content={response.content} />
@@ -108,7 +89,7 @@ export const OptimizedResponsePanel = memo(function OptimizedResponsePanel() {
   const latestAnswer = useMemo(() => {
     // Filter to only "answer" type and get the most recent
     const answers = aiResponses.filter(r => r.type === 'answer')
-    return answers.length > 0 ? [answers[answers.length - 1]] : []
+    return answers.length > 0 ? [answers.at(-1)] : []
   }, [aiResponses])
 
   const recentResponses = latestAnswer
@@ -137,7 +118,7 @@ export const OptimizedResponsePanel = memo(function OptimizedResponsePanel() {
     <div className="h-full overflow-y-auto">
       <div className="space-y-3 pb-4">
         {recentResponses.map((response) => (
-          <ResponseItem key={response.id} response={response} />
+          response && <ResponseItem key={response.id} response={response} />
         ))}
       </div>
     </div>

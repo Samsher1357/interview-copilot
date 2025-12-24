@@ -1,5 +1,7 @@
-import { Server as HTTPServer } from 'http'
+import { Server as HTTPServer } from 'node:http'
 import { Server as SocketIOServer } from 'socket.io'
+import { langchainService } from '../services/langchainService'
+import { TranscriptEntry } from '../types'
 
 let io: SocketIOServer | null = null
 
@@ -18,89 +20,63 @@ export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
       credentials: true,
     },
     transports: ['websocket', 'polling'],
-    // Connection settings to prevent memory leaks
     pingTimeout: 60000,
     pingInterval: 25000,
     upgradeTimeout: 10000,
-    maxHttpBufferSize: 1e6, // 1MB
+    maxHttpBufferSize: 1e6,
     connectTimeout: 45000,
   })
 
   io.on('connection', (socket) => {
     console.log('✅ Client connected:', socket.id)
 
-    // Handle custom events
-    socket.on('event', (event) => {
-      console.log('📨 Received event:', event.type)
-      
-      // Broadcast to all other clients in the same session
-      if (event.sessionId) {
-        socket.to(event.sessionId).emit('event', event)
-      } else {
-        // Broadcast to all other clients
-        socket.broadcast.emit('event', event)
-      }
-    })
+    // Handle streaming analysis
+    socket.on('analyze:stream', async (data) => {
+      const { transcripts, language, interviewContext, simpleEnglish, aiModel } = data
 
-    // Join session room
-    socket.on('join:session', (sessionId: string) => {
-      socket.join(sessionId)
-      console.log(`👥 Client ${socket.id} joined session ${sessionId}`)
-      
-      // Notify others in the room
-      socket.to(sessionId).emit('event', {
-        type: 'user:connected',
-        payload: { socketId: socket.id },
-        timestamp: Date.now(),
-      })
-    })
+      try {
+        if (!transcripts || !Array.isArray(transcripts) || transcripts.length === 0) {
+          socket.emit('analyze:error', { error: 'Invalid transcripts' })
+          return
+        }
 
-    // Leave session room
-    socket.on('leave:session', (sessionId: string) => {
-      socket.leave(sessionId)
-      console.log(`👋 Client ${socket.id} left session ${sessionId}`)
-      
-      // Notify others in the room
-      socket.to(sessionId).emit('event', {
-        type: 'user:disconnected',
-        payload: { socketId: socket.id },
-        timestamp: Date.now(),
-      })
-    })
+        const trimmedTranscripts = (transcripts as TranscriptEntry[]).slice(-8)
+        let fullResponse = ''
 
-    // Handle realtime transcript updates
-    socket.on('transcript:update', (data) => {
-      if (data.sessionId) {
-        socket.to(data.sessionId).emit('transcript:update', data)
-      } else {
-        socket.broadcast.emit('transcript:update', data)
-      }
-    })
+        for await (const chunk of langchainService.streamAnalysis(
+          trimmedTranscripts,
+          language || 'en',
+          interviewContext || {},
+          simpleEnglish || false,
+          aiModel || 'gpt-4o-mini'
+        )) {
+          fullResponse += chunk
+          socket.emit('analyze:chunk', { chunk })
+        }
 
-    // Handle realtime AI response updates
-    socket.on('ai:response', (data) => {
-      if (data.sessionId) {
-        socket.to(data.sessionId).emit('ai:response', data)
-      } else {
-        socket.broadcast.emit('ai:response', data)
+        const parsed = {
+          intent: 'general',
+          context: 'Streamed response',
+          answer: fullResponse.trim(),
+          suggestions: [],
+          hints: [],
+          talkingPoints: [],
+        }
+
+        socket.emit('analyze:complete', { result: parsed })
+      } catch (error) {
+        console.error('Streaming error:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Analysis failed'
+        socket.emit('analyze:error', { error: errorMessage })
       }
     })
 
     socket.on('disconnect', (reason) => {
       console.log('❌ Client disconnected:', socket.id, reason)
-      
-      // Clean up: leave all rooms
-      const rooms = Array.from(socket.rooms)
-      rooms.forEach(room => {
-        if (room !== socket.id) {
-          socket.leave(room)
-        }
-      })
     })
 
     socket.on('error', (error) => {
       console.error('❌ Socket error:', error)
-      // Close the connection on error
       socket.disconnect(true)
     })
   })

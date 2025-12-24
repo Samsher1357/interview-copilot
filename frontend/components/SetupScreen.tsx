@@ -5,19 +5,17 @@ import { useInterviewStore, InterviewContext } from '@/lib/store'
 import { apiClient } from '@/lib/apiClient'
 import { 
   Briefcase, Building2, Code, GraduationCap, Award, FileText, 
-  Upload, Loader2, Volume2, VolumeX, Play, Settings, Brain
+  Upload, Loader2, Play, Settings, Brain
 } from 'lucide-react'
 
 interface SetupScreenProps {
   onStart: () => void
 }
 
-export function SetupScreen({ onStart }: SetupScreenProps) {
+export function SetupScreen({ onStart }: Readonly<SetupScreenProps>) {
   const { 
     interviewContext, 
     setInterviewContext,
-    autoSpeak,
-    setAutoSpeak,
     simpleEnglish,
     setSimpleEnglish,
     aiModel,
@@ -36,6 +34,7 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
   
   const [skillsInput, setSkillsInput] = useState('')
   const [isParsingResume, setIsParsingResume] = useState(false)
+  const [parsingProgress, setParsingProgress] = useState<string>('')
   const [resumeError, setResumeError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -58,16 +57,19 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
 
     setIsParsingResume(true)
     setResumeError(null)
+    setParsingProgress('Reading file...')
 
     try {
       let parsed: any
 
       if (isPDF) {
+        setParsingProgress('Extracting text from PDF...')
         const formData = new FormData()
         formData.append('file', file)
 
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-        const response = await fetch(`${apiUrl}/api/parse-pdf`, {
+        setParsingProgress('Uploading PDF...')
+        const response = await fetch(`${apiUrl}/api/resume/pdf`, {
           method: 'POST',
           body: formData,
         })
@@ -77,8 +79,10 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
           throw new Error(errorData.error || 'Failed to parse PDF')
         }
 
+        setParsingProgress('Analyzing resume content...')
         parsed = await response.json()
       } else {
+        setParsingProgress('Reading text file...')
         const text = await file.text()
 
         if (text.length < 50) {
@@ -87,10 +91,12 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
           return
         }
 
+        setParsingProgress('Analyzing resume content...')
         const result = await apiClient.parseResume(text)
         parsed = result.context
       }
 
+      setParsingProgress('Populating fields...')
       setFormData({
         jobRole: parsed.jobRole || formData.jobRole,
         company: parsed.company || formData.company,
@@ -104,11 +110,18 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
       if (parsed.skills && parsed.skills.length > 0) {
         setSkillsInput(parsed.skills.join(', '))
       }
+      
+      // Show success toast
+      const { showToast } = useInterviewStore.getState()
+      showToast('success', 'Resume Parsed!', 'Your information has been extracted successfully')
     } catch (error: any) {
       console.error('Resume parsing error:', error)
       setResumeError(error.message || 'Failed to parse resume. Please try pasting the text manually.')
+      const { showToast } = useInterviewStore.getState()
+      showToast('error', 'Parsing Failed', error.message || 'Failed to parse resume')
     } finally {
       setIsParsingResume(false)
+      setParsingProgress('')
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
@@ -200,24 +213,6 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
                 </select>
               </div>
 
-              {/* Auto Speak */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
-                  {autoSpeak ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                  Auto-Speak
-                </label>
-                <button
-                  onClick={() => setAutoSpeak(!autoSpeak)}
-                  className={`w-full px-3 py-2 rounded-lg font-medium text-sm transition-all ${
-                    autoSpeak
-                      ? 'bg-white text-blue-600'
-                      : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  {autoSpeak ? 'Enabled' : 'Disabled'}
-                </button>
-              </div>
-
               {/* Simple English */}
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
                 <label className="flex items-center gap-2 text-sm font-semibold text-white mb-2">
@@ -264,7 +259,7 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
                   {isParsingResume ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Parsing...
+                      {parsingProgress || 'Parsing...'}
                     </>
                   ) : (
                     <>

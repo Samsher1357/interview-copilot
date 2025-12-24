@@ -47,8 +47,8 @@ export function ControlPanel() {
       }
     }
 
-    window.addEventListener('keydown', handleKeyPress)
-    return () => window.removeEventListener('keydown', handleKeyPress)
+    globalThis.addEventListener('keydown', handleKeyPress)
+    return () => globalThis.removeEventListener('keydown', handleKeyPress)
   }, [isListening, setIsListening, transcripts.length, aiResponses.length])
 
   const handleToggleListening = () => {
@@ -67,6 +67,8 @@ export function ControlPanel() {
     if (confirm('Clear all transcripts and responses?')) {
       clearTranscripts()
       clearResponses()
+      const { showToast } = useInterviewStore.getState()
+      showToast('success', 'Cleared', 'All transcripts and responses have been cleared')
     }
   }
 
@@ -80,11 +82,15 @@ export function ControlPanel() {
       a.download = `interview-${new Date().toISOString().slice(0, 10)}.json`
       document.body.appendChild(a)
       a.click()
-      document.body.removeChild(a)
+      a.remove()
       URL.revokeObjectURL(url)
+      
+      const { showToast } = useInterviewStore.getState()
+      showToast('success', 'Exported!', `Downloaded as ${a.download}`)
     } catch (error) {
       console.error('Export failed:', error)
-      alert('Failed to export data')
+      const { showToast } = useInterviewStore.getState()
+      showToast('error', 'Export Failed', 'Failed to export data')
     }
   }
 
@@ -96,7 +102,7 @@ export function ControlPanel() {
       text += '--- Conversation ---\n\n'
       transcripts.forEach((t) => {
         const time = new Date(t.timestamp).toLocaleTimeString()
-        const speaker = t.speaker === 'interviewer' ? 'Interviewer' : 'You'
+        const speaker = t.speaker === 'user' ? 'Candidate' : 'System'
         text += `[${time}] ${speaker}: ${t.text}\n\n`
       })
       
@@ -114,11 +120,15 @@ export function ControlPanel() {
       a.download = `interview-${new Date().toISOString().slice(0, 10)}.txt`
       document.body.appendChild(a)
       a.click()
-      document.body.removeChild(a)
+      a.remove()
       URL.revokeObjectURL(url)
+      
+      const { showToast } = useInterviewStore.getState()
+      showToast('success', 'Exported!', `Downloaded as ${a.download}`)
     } catch (error) {
       console.error('Export failed:', error)
-      alert('Failed to export data')
+      const { showToast } = useInterviewStore.getState()
+      showToast('error', 'Export Failed', 'Failed to export data')
     }
   }
 

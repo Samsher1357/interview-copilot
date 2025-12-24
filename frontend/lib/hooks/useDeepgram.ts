@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { TranscriptEntry } from '@/lib/store'
-import { speakerDetectionService } from '@/lib/speakerDetection'
 
 export function useDeepgram() {
   const [isConnected, setIsConnected] = useState(false)
@@ -16,10 +15,7 @@ export function useDeepgram() {
   const connectingRef = useRef(false)
   const shouldReconnectRef = useRef(true)
 
-  const lastSpeakerRef = useRef<'interviewer' | 'applicant'>('interviewer')
-  const speakerRoleMapRef = useRef<Record<string, 'interviewer' | 'applicant'>>({})
   const transcriptBufferRef = useRef('')
-  const currentSpeakerIdRef = useRef<string | null>(null)
 
   const cleanup = () => {
     // PRIORITY 1: Stop microphone immediately (this removes browser mic indicator)
@@ -62,7 +58,6 @@ export function useDeepgram() {
 
     // Clear buffer states
     transcriptBufferRef.current = ''
-    currentSpeakerIdRef.current = null
   }
 
   const disconnect = useCallback(() => {
@@ -83,19 +78,17 @@ export function useDeepgram() {
 
       try {
         cleanup()
-    shouldReconnectRef.current = false
-    reconnectAttemptsRef.current = 0
+        shouldReconnectRef.current = true
+        reconnectAttemptsRef.current = 0
 
         transcriptBufferRef.current = ''
-        currentSpeakerIdRef.current = null
 
         const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-        const res = await fetch(`${api}/api/deepgram?language=${language}&diarize=true`)
+        const res = await fetch(`${api}/api/deepgram?language=${language}&diarize=false`)
         if (!res.ok) throw new Error('Failed to fetch Deepgram connection')
 
         const { wsUrl, apiKey } = await res.json()
 
-      shouldReconnectRef.current = true
         // mic
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true },
@@ -131,25 +124,14 @@ export function useDeepgram() {
           const utterance = transcriptBufferRef.current.trim()
           if (!utterance) return
 
-          const speakerId = currentSpeakerIdRef.current ?? ''
-          let role = speakerRoleMapRef.current[speakerId]
-
-          if (!role) {
-            role = speakerDetectionService.detectSpeaker(utterance, lastSpeakerRef.current).speaker
-            if (speakerId) speakerRoleMapRef.current[speakerId] = role
-          }
-
-          lastSpeakerRef.current = role
-
           onTranscript({
             id: crypto.randomUUID(),
             text: utterance,
-            speaker: role,
+            speaker: 'user', // All transcripts are from the user/candidate
             timestamp: Date.now(),
           })
 
           transcriptBufferRef.current = ''
-          currentSpeakerIdRef.current = null
         }
 
         ws.onmessage = (e) => {
@@ -159,16 +141,6 @@ export function useDeepgram() {
             if (!alt || !data.is_final) return
 
             const text = alt.transcript?.trim()
-
-            const rawSpeaker = alt.words?.[0]?.speaker
-            const nextSpeakerId = rawSpeaker === undefined || rawSpeaker === null ? '' : String(rawSpeaker)
-
-            if (nextSpeakerId) {
-              if (currentSpeakerIdRef.current && currentSpeakerIdRef.current !== nextSpeakerId && transcriptBufferRef.current) {
-                flushTranscript()
-              }
-              currentSpeakerIdRef.current = nextSpeakerId
-            }
 
             if (text) {
               if (!transcriptBufferRef.current) {

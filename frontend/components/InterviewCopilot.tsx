@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useInterviewStore } from '@/lib/store'
 import { DeepgramTranscriber } from './DeepgramTranscriber'
 import { TranscriptPanel } from './TranscriptPanel'
@@ -8,17 +8,15 @@ import { OptimizedResponsePanel } from './OptimizedResponsePanel'
 import { ControlPanel } from './ControlPanel'
 import { ErrorDisplay } from './ErrorDisplay'
 import { ContextModal } from './ContextModal'
-import { FileText, Volume2, VolumeX, Settings } from 'lucide-react'
+import { FileText, Settings } from 'lucide-react'
 
 export function InterviewCopilot() {
   const {
-    isListening,
-    autoSpeak,
+    // isListening, // removed as per SonarQube suggestion
     simpleEnglish,
     error,
     isAnalyzing,
     interviewContext,
-    setAutoSpeak,
     setSimpleEnglish,
     setError,
     setShowContextModal,
@@ -39,8 +37,8 @@ export function InterviewCopilot() {
       }
     }
 
-    window.addEventListener('keydown', handleKeyPress)
-    return () => window.removeEventListener('keydown', handleKeyPress)
+    globalThis.addEventListener('keydown', handleKeyPress)
+    return () => globalThis.removeEventListener('keydown', handleKeyPress)
   }, [setShowContextModal])
 
   return (
@@ -108,26 +106,11 @@ export function InterviewCopilot() {
                   </p>
                   {isAnalyzing && (
                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse"></span>
+                      <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse mr-1"></span>
                       Analyzing...
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={() => setAutoSpeak(!autoSpeak)}
-                  className={`p-2 rounded-lg transition-all ${
-                    autoSpeak
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-                  }`}
-                  title={autoSpeak ? 'Auto-speak enabled' : 'Auto-speak disabled'}
-                >
-                  {autoSpeak ? (
-                    <Volume2 className="w-4 h-4" />
-                  ) : (
-                    <VolumeX className="w-4 h-4" />
-                  )}
-                </button>
               </div>
               <div className="flex-1 overflow-hidden">
                 <OptimizedResponsePanel />

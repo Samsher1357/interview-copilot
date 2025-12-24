@@ -48,22 +48,26 @@ The backend reads from the root `.env.local` file via `src/config/env.ts`, which
 ## API Endpoints
 
 - `GET /health` - Health check
-- `POST /api/analyze` - Non-streaming AI analysis
-- `POST /api/analyze-stream` - Streaming AI analysis (Server-Sent Events)
 - `GET /api/deepgram` - Get Deepgram WebSocket connection details
 - `POST /api/deepgram` - Get Deepgram WebSocket connection details (POST)
-- `POST /api/parse-resume/parse-resume` - Parse resume text
-- `POST /api/parse-pdf` - Parse PDF resume
+- `POST /api/resume/parse` - Parse resume text
+- `POST /api/resume/pdf` - Parse PDF resume
 
-## WebSocket Events
+## Socket.IO Events
 
 Socket.IO server available at `/socket.io` with the following events:
 
-- `event` - Custom event broadcasting
-- `join:session` - Join a session room
-- `leave:session` - Leave a session room
-- `transcript:update` - Real-time transcript updates
-- `ai:response` - Real-time AI response updates
+### Client → Server
+- `analyze:stream` - Request streaming AI analysis
+  - Payload: `{ transcripts, language, interviewContext, simpleEnglish, aiModel }`
+
+### Server → Client
+- `analyze:chunk` - Streaming response chunk
+  - Payload: `{ chunk: string }`
+- `analyze:complete` - Analysis complete
+  - Payload: `{ result: { intent, context, answer, suggestions, hints, talkingPoints } }`
+- `analyze:error` - Analysis error
+  - Payload: `{ error: string }`
 
 ## Architecture
 

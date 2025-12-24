@@ -8,7 +8,7 @@ interface ErrorDisplayProps {
   onDismiss: () => void
 }
 
-export function ErrorDisplay({ error, onDismiss }: ErrorDisplayProps) {
+export function ErrorDisplay({ error, onDismiss }: Readonly<ErrorDisplayProps>) {
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {

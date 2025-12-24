@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useInterviewStore } from '@/lib/store'
 import { Mic, MicOff, Sparkles, Copy, Trash2, Settings, LogOut } from 'lucide-react'
 import { DeepgramTranscriber } from './DeepgramTranscriber'
-import { useStreamingAnalysis } from '@/lib/hooks/useStreamingAnalysis'
+import { useSocketAnalysis } from '@/lib/hooks/useSocketAnalysis'
 import { FormattedContent } from './FormattedContent'
 import { ErrorDisplay } from './ErrorDisplay'
 import { SetupScreen } from './SetupScreen'
@@ -36,7 +36,7 @@ export function CleanInterviewUI() {
   
   const [showSetup, setShowSetup] = useState(!hasCompletedSetup)
 
-  const { analyzeWithStreaming, cancel: cancelStreaming } = useStreamingAnalysis()
+  const { analyzeWithStreaming, cancel: cancelStreaming } = useSocketAnalysis()
   const transcriptRef = useRef<HTMLDivElement>(null)
   const answerRef = useRef<HTMLDivElement>(null)
   const streamingResponseRef = useRef<string>('')
@@ -93,19 +93,15 @@ export function CleanInterviewUI() {
     }
   }, [transcripts])
 
-  // Auto-scroll transcript
+  // Auto-scroll transcript only
   useEffect(() => {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
     }
   }, [fullTranscript])
 
-  // Auto-scroll answer
-  useEffect(() => {
-    if (answerRef.current) {
-      answerRef.current.scrollTop = answerRef.current.scrollHeight
-    }
-  }, [latestAnswer?.content])
+  // DISABLED: Auto-scroll answer for better readability
+  // Users can manually scroll to read at their own pace
 
   const handleToggleListening = () => {
     setIsListening(!isListening)
@@ -181,7 +177,13 @@ export function CleanInterviewUI() {
 
   const handleCopyAnswer = () => {
     if (latestAnswer) {
-      navigator.clipboard.writeText(latestAnswer.content)
+      navigator.clipboard.writeText(latestAnswer.content).then(() => {
+        const { showToast } = useInterviewStore.getState()
+        showToast('success', 'Copied!', 'Answer copied to clipboard')
+      }).catch(() => {
+        const { showToast } = useInterviewStore.getState()
+        showToast('error', 'Copy failed', 'Failed to copy to clipboard')
+      })
     }
   }
 
@@ -189,6 +191,8 @@ export function CleanInterviewUI() {
     if (confirm('Clear all transcripts and responses?')) {
       clearTranscripts()
       clearResponses()
+      const { showToast } = useInterviewStore.getState()
+      showToast('success', 'Cleared', 'All transcripts and responses have been cleared')
     }
   }
 
@@ -202,6 +206,9 @@ export function CleanInterviewUI() {
       // Clear all data
       clearTranscripts()
       clearResponses()
+      
+      const { showToast } = useInterviewStore.getState()
+      showToast('info', 'Session Ended', 'Your interview session has been ended')
       
       // Return to setup screen
       setShowSetup(true)
@@ -321,35 +328,35 @@ export function CleanInterviewUI() {
 
         {/* Main Content Area */}
         <div className="space-y-4">
-          {/* Transcript Section */}
+          {/* Transcript Section - Single line on mobile */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-4">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-3 sm:py-4">
+              <h2 className="text-sm sm:text-lg font-bold text-white flex items-center gap-2">
                 <div className="w-2 h-2 bg-white rounded-full"></div>
                 Question
               </h2>
             </div>
             <div
               ref={transcriptRef}
-              className="p-6 max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
+              className="p-3 sm:p-6 max-h-[60px] sm:max-h-[150px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
             >
               {fullTranscript ? (
-                <p className="text-gray-900 dark:text-gray-100 text-lg leading-relaxed">
+                <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base leading-snug sm:leading-relaxed line-clamp-2 sm:line-clamp-none">
                   {fullTranscript}
                 </p>
               ) : (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                <p className="text-gray-500 dark:text-gray-400 text-center text-xs sm:text-sm py-2 sm:py-4">
                   Click "Start Recording" to begin transcribing...
                 </p>
               )}
             </div>
           </div>
 
-          {/* Answer Section */}
+          {/* Answer Section - Maximized on mobile */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5" />
+            <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+              <h2 className="text-sm sm:text-lg font-bold text-white flex items-center gap-2">
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                 Answer
               </h2>
               {latestAnswer && (
@@ -358,25 +365,25 @@ export function CleanInterviewUI() {
                   className="p-2 hover:bg-white/20 rounded-lg transition-all"
                   title="Copy answer"
                 >
-                  <Copy className="w-4 h-4 text-white" />
+                  <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                 </button>
               )}
             </div>
             <div
               ref={answerRef}
-              className="p-6 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
+              className="p-4 sm:p-6 h-[calc(100vh-280px)] sm:h-auto sm:max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
             >
               {latestAnswer ? (
-                <div className="text-gray-900 dark:text-gray-100 text-base leading-relaxed">
+                <div className="text-gray-700 dark:text-gray-200 text-sm sm:text-base leading-relaxed">
                   <FormattedContent content={latestAnswer.content} />
                 </div>
               ) : (
-                <div className="text-center py-12">
-                  <Sparkles className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-500 dark:text-gray-400 font-medium mb-2">
+                <div className="text-center py-8 sm:py-12">
+                  <Sparkles className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3 sm:mb-4" />
+                  <p className="text-gray-500 dark:text-gray-400 font-medium mb-2 text-sm sm:text-base">
                     AI answers will appear here
                   </p>
-                  <p className="text-sm text-gray-400 dark:text-gray-500">
+                  <p className="text-xs sm:text-sm text-gray-400 dark:text-gray-500">
                     Questions are auto-detected or click "Get AI Answer"
                   </p>
                 </div>

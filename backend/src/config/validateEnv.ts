@@ -79,14 +79,14 @@ export function validateEnvironment(): void {
  */
 export function getEnvConfig() {
   return {
-    port: parseInt(process.env.PORT || '3001'),
+    port: Number.parseInt(process.env.PORT || '3001', 10),
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     aiProvider: (process.env.AI_PROVIDER || 'openai') as 'openai' | 'gemini',
     openaiApiKey: process.env.OPENAI_API_KEY,
     openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     googleApiKey: process.env.GOOGLE_API_KEY,
     geminiModel: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
-    aiMaxTokens: parseInt(process.env.AI_MAX_TOKENS || '1200'),
+    aiMaxTokens: Number.parseInt(process.env.AI_MAX_TOKENS || '1200', 10),
     deepgramApiKey: process.env.DEEPGRAM_API_KEY!,
     nodeEnv: process.env.NODE_ENV || 'development',
   }

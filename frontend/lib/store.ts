@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import type { ToastMessage } from '@/components/Toast'
 
 export interface TranscriptEntry {
   id: string
-  speaker: 'interviewer' | 'applicant' | 'system'
+  speaker: 'user' | 'system'
   text: string
   timestamp: number
 }
@@ -31,7 +32,6 @@ interface InterviewState {
   transcripts: TranscriptEntry[]
   aiResponses: AIResponse[]
   currentLanguage: string
-  autoSpeak: boolean
   simpleEnglish: boolean
   aiModel: string
   error: string | null
@@ -39,6 +39,7 @@ interface InterviewState {
   interviewContext: InterviewContext
   showContextModal: boolean
   sessionStartTime: number | null
+  toasts: ToastMessage[]
   
   setIsListening: (isListening: boolean) => void
   addTranscript: (entry: TranscriptEntry) => void
@@ -47,7 +48,6 @@ interface InterviewState {
   removeAIResponse: (id: string) => void
   mergeNearbyTranscripts: () => void
   setLanguage: (lang: string) => void
-  setAutoSpeak: (enabled: boolean) => void
   setSimpleEnglish: (enabled: boolean) => void
   setAiModel: (model: string) => void
   setError: (error: string | null) => void
@@ -58,6 +58,9 @@ interface InterviewState {
   clearResponses: () => void
   clearAll: () => void
   exportData: () => string
+  addToast: (toast: Omit<ToastMessage, 'id'>) => void
+  removeToast: (id: string) => void
+  showToast: (type: ToastMessage['type'], message: string, description?: string) => void
 }
 
 // Helper to safely access localStorage
@@ -76,7 +79,6 @@ export const useInterviewStore = create<InterviewState>()(
       transcripts: [],
       aiResponses: [],
       currentLanguage: 'en-US',
-      autoSpeak: false,
       simpleEnglish: false,
       aiModel: 'gpt-4o-mini',
       error: null,
@@ -84,22 +86,19 @@ export const useInterviewStore = create<InterviewState>()(
       interviewContext: {},
       showContextModal: false,
       sessionStartTime: null,
+      toasts: [],
   
   setIsListening: (isListening) => set((state) => ({
     isListening,
     sessionStartTime: isListening && !state.sessionStartTime ? Date.now() : state.sessionStartTime
   })),
-  addTranscript: (entry) => set((state) => {
+  addTranscript: (entry) => {
+    const state = get()
     const transcripts = [...state.transcripts]
     const lastTranscript = transcripts[transcripts.length - 1]
     
-    // On mobile, merge transcripts from same speaker within 2 seconds
-    const isMobile = typeof window !== 'undefined' && (
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-      window.innerWidth < 768
-    )
-    
-    if (isMobile && lastTranscript && 
+    // Merge transcripts from same speaker within 1 second
+    if (lastTranscript && 
         lastTranscript.speaker === entry.speaker &&
         entry.timestamp - lastTranscript.timestamp < 1000) {
       // Merge with last transcript
@@ -110,19 +109,16 @@ export const useInterviewStore = create<InterviewState>()(
         timestamp: lastTranscript.timestamp,
       }
       transcripts[transcripts.length - 1] = merged
-      return { transcripts }
+      set({ transcripts })
+      return
     }
     
-    return { transcripts: [...transcripts, entry] }
-  }),
-  mergeNearbyTranscripts: () => set((state) => {
-    const isMobile = typeof window !== 'undefined' && (
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-      window.innerWidth < 768
-    )
-    
-    if (!isMobile || state.transcripts.length < 2) {
-      return state
+    set({ transcripts: [...transcripts, entry] })
+  },
+  mergeNearbyTranscripts: () => {
+    const state = get()
+    if (state.transcripts.length < 2) {
+      return
     }
     
     const merged: TranscriptEntry[] = []
@@ -132,7 +128,7 @@ export const useInterviewStore = create<InterviewState>()(
       const next = state.transcripts[i]
       const timeDiff = next.timestamp - current.timestamp
       
-      // Merge if same speaker and within 1 second (for real-time feel)
+      // Merge if same speaker and within 1 second
       if (current.speaker === next.speaker && timeDiff < 1000) {
         current = {
           id: current.id,
@@ -150,11 +146,9 @@ export const useInterviewStore = create<InterviewState>()(
     
     // Only update if we actually merged something
     if (merged.length < state.transcripts.length) {
-      return { transcripts: merged }
+      set({ transcripts: merged })
     }
-    
-    return state
-  }),
+  },
   addAIResponse: (response) => set((state) => ({
     aiResponses: [...state.aiResponses, response]
   })),
@@ -167,7 +161,6 @@ export const useInterviewStore = create<InterviewState>()(
     aiResponses: state.aiResponses.filter(r => r.id !== id)
   })),
   setLanguage: (lang) => set({ currentLanguage: lang }),
-  setAutoSpeak: (enabled) => set({ autoSpeak: enabled }),
   setSimpleEnglish: (enabled) => set({ simpleEnglish: enabled }),
   setAiModel: (model) => set({ aiModel: model }),
   setError: (error) => set({ error }),
@@ -193,6 +186,16 @@ export const useInterviewStore = create<InterviewState>()(
       exportedAt: Date.now(),
     }, null, 2)
   },
+  addToast: (toast) => set((state) => ({
+    toasts: [...state.toasts, { ...toast, id: `toast-${Date.now()}-${Math.random()}` }]
+  })),
+  removeToast: (id) => set((state) => ({
+    toasts: state.toasts.filter(t => t.id !== id)
+  })),
+  showToast: (type, message, description) => {
+    const toast: Omit<ToastMessage, 'id'> = { type, message, description }
+    get().addToast(toast)
+  },
 }),
     {
       name: 'interview-copilot-storage',
@@ -205,7 +208,6 @@ export const useInterviewStore = create<InterviewState>()(
         transcripts: state.transcripts,
         aiResponses: state.aiResponses,
         currentLanguage: state.currentLanguage,
-        autoSpeak: state.autoSpeak,
         simpleEnglish: state.simpleEnglish,
         aiModel: state.aiModel,
         interviewContext: state.interviewContext,

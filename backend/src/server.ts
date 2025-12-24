@@ -1,8 +1,7 @@
 import './config/env' // Load environment variables first
 import { validateEnvironment } from './config/validateEnv'
 import express from 'express'
-import { createServer } from 'http'
-import { Server as SocketIOServer } from 'socket.io'
+import { createServer } from 'node:http'
 import cors from 'cors'
 import { initializeSocketIO } from './socket/socketHandler'
 import { setupRoutes } from './routes'

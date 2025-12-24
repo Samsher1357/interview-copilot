@@ -8,24 +8,22 @@ export function StatsPanel() {
   const { transcripts, aiResponses } = useInterviewStore()
 
   const stats = useMemo(() => {
-    const interviewerCount = transcripts.filter(t => t.speaker === 'interviewer').length
-    const applicantCount = transcripts.filter(t => t.speaker === 'applicant').length
+    const userCount = transcripts.filter(t => t.speaker === 'user').length
     const answerCount = aiResponses.filter(r => r.type === 'answer').length
     
     const totalWords = transcripts.reduce((sum, t) => sum + t.text.split(/\s+/).length, 0)
     
     const duration = transcripts.length > 0
-      ? Math.round((transcripts[transcripts.length - 1].timestamp - transcripts[0].timestamp) / 1000 / 60)
+      ? Math.round(((transcripts.at(-1)?.timestamp ?? 0) - transcripts[0].timestamp) / 1000 / 60)
       : 0
 
     return {
       duration,
       totalTranscripts: transcripts.length,
-      interviewerCount,
-      applicantCount,
+      userCount,
       answerCount,
       totalWords,
-      avgWordsPerResponse: applicantCount > 0 ? Math.round(totalWords / applicantCount) : 0,
+      avgWordsPerResponse: userCount > 0 ? Math.round(totalWords / userCount) : 0,
     }
   }, [transcripts, aiResponses])
 

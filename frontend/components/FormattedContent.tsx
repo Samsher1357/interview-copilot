@@ -42,7 +42,7 @@ function processInlineCode(text: string): Array<{ type: 'text' | 'inline-code'; 
     return parts.length > 0 ? parts : [{ type: 'text', content: text }]
   }
 
-export function FormattedContent({ content, className = '' }: FormattedContentProps) {
+export function FormattedContent({ content, className = '' }: Readonly<FormattedContentProps>) {
   const formattedContent = useMemo(() => {
     if (!content) return [{ type: 'text' as const, content: '' }]
 
@@ -101,7 +101,7 @@ export function FormattedContent({ content, className = '' }: FormattedContentPr
           const codePart = part as { type: 'code'; content: string; language?: string }
           return (
             <pre
-              key={index}
+              key={codePart.content + codePart.language}
               className="bg-gray-900 dark:bg-gray-800 text-gray-100 dark:text-gray-200 rounded-lg p-3 sm:p-4 my-2 sm:my-3 overflow-x-auto text-xs sm:text-sm font-mono leading-relaxed border border-gray-700 dark:border-gray-600 shadow-inner"
             >
               {codePart.language && (
@@ -115,7 +115,7 @@ export function FormattedContent({ content, className = '' }: FormattedContentPr
         } else if (part.type === 'inline-code') {
           return (
             <code
-              key={index}
+              key={part.content}
               className="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-1.5 py-0.5 rounded text-sm font-mono"
             >
               {part.content}
@@ -125,16 +125,14 @@ export function FormattedContent({ content, className = '' }: FormattedContentPr
           // Process text with bullet points, highlights, and numbered lists
           const lines = part.content.split('\n')
           const processedLines: JSX.Element[] = []
-          
           lines.forEach((line, lineIndex) => {
             const trimmedLine = line.trim()
-            
             // Check for sub-bullets (indented with spaces or tabs)
             if (/^(\s{2,}|\t)[-*•]\s+/.test(trimmedLine)) {
               const content = trimmedLine.replace(/^(\s{2,}|\t)[-*•]\s+/, '')
               const processedContent = processHighlights(content)
               processedLines.push(
-                <div key={lineIndex} className="flex items-start gap-2 my-0.5 ml-6">
+                <div key={content} className="flex items-start gap-2 my-0.5 ml-6">
                   <span className="text-primary-500 dark:text-primary-400 mt-1 text-xs">◦</span>
                   <span className="text-sm">{processedContent}</span>
                 </div>
@@ -145,7 +143,7 @@ export function FormattedContent({ content, className = '' }: FormattedContentPr
               const content = trimmedLine.replace(/^[-*•]\s+/, '')
               const processedContent = processHighlights(content)
               processedLines.push(
-                <div key={lineIndex} className="flex items-start gap-2 my-1.5">
+                <div key={content} className="flex items-start gap-2 my-1.5">
                   <span className="text-primary-600 dark:text-primary-400 mt-1 font-bold text-lg">•</span>
                   <span className="flex-1">{processedContent}</span>
                 </div>
@@ -153,12 +151,12 @@ export function FormattedContent({ content, className = '' }: FormattedContentPr
             }
             // Check for numbered lists (1., 2., etc.)
             else if (/^\d+\.\s+/.test(trimmedLine)) {
-              const match = trimmedLine.match(/^(\d+)\.\s+(.+)/)
+              const match = /^\d+\.\s+(.+)/.exec(trimmedLine)
               if (match) {
-                const processedContent = processHighlights(match[2])
+                const processedContent = processHighlights(match[1])
                 processedLines.push(
-                  <div key={lineIndex} className="flex items-start gap-2 my-1.5">
-                    <span className="text-primary-600 dark:text-primary-400 font-bold text-base">{match[1]}.</span>
+                  <div key={match[1]} className="flex items-start gap-2 my-1.5">
+                    <span className="text-primary-600 dark:text-primary-400 font-bold text-base">{trimmedLine.split('.')[0]}.</span>
                     <span className="flex-1">{processedContent}</span>
                   </div>
                 )
@@ -168,18 +166,17 @@ export function FormattedContent({ content, className = '' }: FormattedContentPr
             else if (trimmedLine.length > 0) {
               const processedContent = processHighlights(trimmedLine)
               processedLines.push(
-                <p key={lineIndex} className={lineIndex > 0 ? 'mt-3 mb-2' : 'mb-2'}>
+                <p key={trimmedLine} className={lineIndex > 0 ? 'mt-3 mb-2' : 'mb-2'}>
                   {processedContent}
                 </p>
               )
             }
             // Empty line - add spacing
             else if (lineIndex < lines.length - 1) {
-              processedLines.push(<div key={lineIndex} className="h-2" />)
+              processedLines.push(<div key={`empty-line-${trimmedLine}`} className="h-2" />)
             }
           })
-          
-          return <div key={index}>{processedLines}</div>
+          return <div key={part.content}>{processedLines}</div>
         }
       })}
     </div>
@@ -254,17 +251,17 @@ function processHighlights(text: string): JSX.Element {
 
   return (
     <>
-      {parts.map((part, idx) => {
+      {parts.map((part) => {
         if (part.type === 'bold') {
-          return <strong key={idx} className="font-bold text-gray-900 dark:text-gray-100">{part.content}</strong>
+          return <strong key={part.content} className="font-bold text-gray-900 dark:text-gray-100">{part.content}</strong>
         } else if (part.type === 'highlight') {
           return (
-            <mark key={idx} className="bg-yellow-200 dark:bg-yellow-900/50 text-gray-900 dark:text-gray-100 px-1 rounded font-semibold">
+            <mark key={part.content} className="bg-yellow-200 dark:bg-yellow-900/50 text-gray-900 dark:text-gray-100 px-1 rounded font-semibold">
               {part.content}
             </mark>
           )
         } else {
-          return <span key={idx}>{part.content}</span>
+          return <span key={part.content}>{part.content}</span>
         }
       })}
     </>
