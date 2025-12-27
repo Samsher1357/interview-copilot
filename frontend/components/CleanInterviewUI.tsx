@@ -228,164 +228,181 @@ export function CleanInterviewUI() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+    <div className="min-h-screen">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="text-center flex-1">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-              AI Interview Copilot
-            </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Your intelligent interview assistant
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleBackToSetup}
-              className="p-3 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all"
-              title="Settings"
-            >
-              <Settings className="w-6 h-6" />
-            </button>
-            <button
-              onClick={handleEndSession}
-              className="flex items-center gap-2 px-4 py-2 text-red-600 dark:text-red-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 border border-red-600 dark:border-red-400 rounded-xl transition-all font-medium text-sm"
-              title="End Session"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">End Session</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Control Buttons */}
-        <div className="mb-6 flex items-center justify-center gap-4 flex-wrap">
-          <button
-            onClick={handleToggleListening}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white transition-all transform active:scale-95 shadow-lg ${
-              isListening
-                ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'
-                : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
-            }`}
-          >
-            {isListening ? (
-              <>
-                <MicOff className="w-5 h-5" />
-                <span>Stop Recording</span>
-              </>
-            ) : (
-              <>
-                <Mic className="w-5 h-5" />
-                <span>Start Recording</span>
-              </>
-            )}
-          </button>
-
-          <button
-            onClick={handleManualAnalysis}
-            disabled={isManualAnalyzing || isAnalyzing || transcripts.length === 0}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all transform active:scale-95 shadow-lg ${
-              isManualAnalyzing || isAnalyzing || transcripts.length === 0
-                ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white'
-            }`}
-          >
-            <Sparkles className="w-5 h-5" />
-            <span>Get AI Answer</span>
-          </button>
-
-          <button
-            onClick={handleClear}
-            className="p-3 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
-            title="Clear all"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Status Indicators */}
-        <div className="mb-4 flex items-center justify-center gap-4 flex-wrap">
-          {isListening && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium text-red-700 dark:text-red-400">Recording</span>
+        <div className="mb-6 sm:mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl sm:text-4xl font-bold text-gradient mb-1">
+                AI Interview Copilot
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+                Real-time interview assistance powered by AI
+              </p>
             </div>
-          )}
-          {questionDetected && !isAnalyzing && !isManualAnalyzing && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-              <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <span className="text-sm font-medium text-purple-700 dark:text-purple-400">Analyzing...</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBackToSetup}
+                className="p-2 sm:p-2.5 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                title="Settings"
+                aria-label="Open settings"
+              >
+                <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+              <button
+                onClick={handleEndSession}
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 text-red-600 dark:text-red-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 border border-red-300 dark:border-red-600 rounded-lg transition-all font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                title="End Session"
+                aria-label="End interview session"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">End</span>
+              </button>
             </div>
-          )}
-          {(isAnalyzing || isManualAnalyzing) && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <div className="w-2 h-2 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-sm font-medium text-blue-700 dark:text-blue-400">AI Thinking...</span>
+          </div>
+
+          {/* Control Buttons */}
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <button
+              onClick={handleToggleListening}
+              className={`flex items-center gap-2 px-5 sm:px-8 py-3 sm:py-3.5 rounded-xl font-semibold text-white transition-all transform active:scale-95 shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-offset-2 min-h-[44px] ${
+                isListening
+                  ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 focus:ring-red-500'
+                  : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:ring-blue-500'
+              }`}
+              aria-label={isListening ? 'Stop recording' : 'Start recording'}
+            >
+              {isListening ? (
+                <>
+                  <MicOff className="w-5 h-5" />
+                  <span className="text-sm sm:text-base">Stop</span>
+                </>
+              ) : (
+                <>
+                  <Mic className="w-5 h-5" />
+                  <span className="text-sm sm:text-base">Record</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleManualAnalysis}
+              disabled={isManualAnalyzing || isAnalyzing || transcripts.length === 0}
+              className={`flex items-center gap-2 px-5 sm:px-8 py-3 sm:py-3.5 rounded-xl font-semibold transition-all transform active:scale-95 shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-offset-2 min-h-[44px] ${
+                isManualAnalyzing || isAnalyzing || transcripts.length === 0
+                  ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-500 cursor-not-allowed shadow-none'
+                  : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white focus:ring-purple-500'
+              }`}
+              aria-label="Get AI answer"
+            >
+              <Sparkles className="w-5 h-5" />
+              <span className="text-sm sm:text-base">Analyze</span>
+            </button>
+
+            <button
+              onClick={handleClear}
+              className="p-3 sm:p-3.5 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 min-h-[44px] min-w-[44px]"
+              title="Clear all"
+              aria-label="Clear all transcripts and responses"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Status Indicators */}
+          {(isListening || questionDetected || isAnalyzing || isManualAnalyzing) && (
+            <div className="mt-4 flex items-center justify-center gap-3 flex-wrap animate-fade-in">
+              {isListening && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs sm:text-sm font-medium text-red-700 dark:text-red-400">Recording</span>
+                </div>
+              )}
+              {questionDetected && !isAnalyzing && !isManualAnalyzing && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                  <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-pulse" />
+                  <span className="text-xs sm:text-sm font-medium text-purple-700 dark:text-purple-400">Question Detected</span>
+                </div>
+              )}
+              {(isAnalyzing || isManualAnalyzing) && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs sm:text-sm font-medium text-blue-700 dark:text-blue-400">AI Thinking...</span>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Main Content Area */}
-        <div className="space-y-4">
-          {/* Transcript Section - Single line on mobile */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-3 sm:py-4">
-              <h2 className="text-sm sm:text-lg font-bold text-white flex items-center gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
+          {/* Transcript Section */}
+          <div className="lg:col-span-2 card animate-slide-up">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <div className="w-2 h-2 bg-white rounded-full"></div>
                 Question
               </h2>
             </div>
             <div
               ref={transcriptRef}
-              className="p-3 sm:p-6 max-h-[60px] sm:max-h-[150px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
+              className="p-4 sm:p-6 h-[120px] sm:h-[200px] lg:h-[calc(100vh-400px)] overflow-y-auto scrollbar-thin"
             >
               {fullTranscript ? (
-                <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base leading-snug sm:leading-relaxed line-clamp-2 sm:line-clamp-none">
+                <p className="text-slate-900 dark:text-slate-100 text-sm sm:text-base leading-relaxed">
                   {fullTranscript}
                 </p>
               ) : (
-                <p className="text-gray-500 dark:text-gray-400 text-center text-xs sm:text-sm py-2 sm:py-4">
-                  Click "Start Recording" to begin transcribing...
-                </p>
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <Mic className="w-10 h-10 sm:w-12 sm:h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                    <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
+                      Click "Record" to start
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Answer Section - Maximized on mobile */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-              <h2 className="text-sm sm:text-lg font-bold text-white flex items-center gap-2">
+          {/* Answer Section */}
+          <div className="lg:col-span-3 card animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl flex items-center justify-between">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-                Answer
+                AI Answer
               </h2>
               {latestAnswer && (
                 <button
                   onClick={handleCopyAnswer}
-                  className="p-2 hover:bg-white/20 rounded-lg transition-all"
+                  className="p-2 hover:bg-white/20 rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-white/50"
                   title="Copy answer"
+                  aria-label="Copy answer to clipboard"
                 >
-                  <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                  <Copy className="w-4 h-4 text-white" />
                 </button>
               )}
             </div>
             <div
               ref={answerRef}
-              className="p-4 sm:p-6 h-[calc(100vh-280px)] sm:h-auto sm:max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600"
+              className="p-4 sm:p-6 h-[calc(100vh-420px)] sm:h-[400px] lg:h-[calc(100vh-400px)] overflow-y-auto scrollbar-thin"
             >
               {latestAnswer ? (
-                <div className="text-gray-700 dark:text-gray-200 text-sm sm:text-base leading-relaxed">
+                <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none">
                   <FormattedContent content={latestAnswer.content} />
                 </div>
               ) : (
-                <div className="text-center py-8 sm:py-12">
-                  <Sparkles className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3 sm:mb-4" />
-                  <p className="text-gray-500 dark:text-gray-400 font-medium mb-2 text-sm sm:text-base">
-                    AI answers will appear here
-                  </p>
-                  <p className="text-xs sm:text-sm text-gray-400 dark:text-gray-500">
-                    Questions are auto-detected or click "Get AI Answer"
-                  </p>
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <Sparkles className="w-12 h-12 sm:w-16 sm:h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                    <p className="text-slate-600 dark:text-slate-400 font-medium mb-2 text-sm sm:text-base">
+                      AI answers appear here
+                    </p>
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-500 max-w-xs mx-auto">
+                      Questions are auto-detected or click "Analyze" to get an answer
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

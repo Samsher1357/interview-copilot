@@ -47,30 +47,32 @@ function Toast({ toast, onDismiss }: Readonly<ToastProps>) {
   const getStyles = () => {
     switch (toast.type) {
       case 'success':
-        return 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+        return 'bg-white dark:bg-slate-800 border-green-400 dark:border-green-600 shadow-glow'
       case 'error':
-        return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+        return 'bg-white dark:bg-slate-800 border-red-400 dark:border-red-600'
       case 'warning':
-        return 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+        return 'bg-white dark:bg-slate-800 border-amber-400 dark:border-amber-600'
       case 'info':
-        return 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+        return 'bg-white dark:bg-slate-800 border-blue-400 dark:border-blue-600'
     }
   }
 
   return (
     <div
-      className={`${getStyles()} border rounded-xl p-4 shadow-lg backdrop-blur-sm max-w-md w-full transition-all duration-300 ${
-        isExiting ? 'opacity-0 translate-x-full' : 'opacity-100 translate-x-0'
+      className={`${getStyles()} border-2 rounded-xl p-4 shadow-soft backdrop-blur-sm max-w-md w-full transition-all duration-300 animate-slide-down ${
+        isExiting ? 'opacity-0 translate-x-full scale-95' : 'opacity-100 translate-x-0 scale-100'
       }`}
+      role="alert"
+      aria-live="polite"
     >
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+          <p className="text-sm font-semibold text-slate-900 dark:text-white">
             {toast.message}
           </p>
           {toast.description && (
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
               {toast.description}
             </p>
           )}
@@ -80,7 +82,8 @@ function Toast({ toast, onDismiss }: Readonly<ToastProps>) {
             setIsExiting(true)
             setTimeout(() => onDismiss(toast.id), 300)
           }}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+          className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+          aria-label="Dismiss notification"
         >
           <X className="w-4 h-4" />
         </button>
