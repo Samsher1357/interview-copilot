@@ -5,8 +5,13 @@ import { Socket } from 'socket.io-client'
 import { TranscriptEntry, AIResponse, InterviewContext } from '@/lib/store'
 import { socketService } from '@/lib/socketService'
 
+const ANALYSIS_TIMEOUT = 30000 // 30 seconds timeout for analysis
+const MAX_RETRY_ATTEMPTS = 2
+
 export function useSocketAnalysis() {
   const socketRef = useRef<Socket | null>(null)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const retryCountRef = useRef(0)
 
   useEffect(() => {
     socketRef.current = socketService.getSocket()
@@ -29,13 +34,29 @@ export function useSocketAnalysis() {
     }
 
     let fullResponse = ''
+    let hasReceivedData = false
 
     const handleChunk = (data: { chunk: string }) => {
+      hasReceivedData = true
       fullResponse += data.chunk
       onChunk(data.chunk)
+      
+      // Reset timeout on each chunk
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = setTimeout(() => {
+        handleError({ error: 'Analysis timeout - no response from server' })
+      }, ANALYSIS_TIMEOUT)
     }
 
     const handleComplete = (data: { result: any }) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+      
+      retryCountRef.current = 0 // Reset retry count on success
+      
       const result = data.result
       const responses: AIResponse[] = []
       const baseTimestamp = Date.now()
@@ -85,15 +106,52 @@ export function useSocketAnalysis() {
     }
 
     const handleError = (data: { error: string }) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+      
+      // Retry logic for transient failures
+      if (retryCountRef.current < MAX_RETRY_ATTEMPTS && !hasReceivedData) {
+        retryCountRef.current++
+        console.log(`Retrying analysis (attempt ${retryCountRef.current}/${MAX_RETRY_ATTEMPTS})`)
+        
+        cleanup()
+        
+        // Retry after a short delay
+        setTimeout(() => {
+          analyzeWithStreaming(
+            transcripts,
+            language,
+            interviewContext,
+            simpleEnglish,
+            aiModel,
+            onChunk,
+            onComplete,
+            onError
+          )
+        }, 1000 * retryCountRef.current)
+        
+        return
+      }
+      
       onError(data.error)
       cleanup()
     }
 
     const cleanup = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
       socket.off('analyze:chunk', handleChunk)
       socket.off('analyze:complete', handleComplete)
       socket.off('analyze:error', handleError)
     }
+
+    // Set initial timeout
+    timeoutRef.current = setTimeout(() => {
+      handleError({ error: 'Analysis timeout - no response from server' })
+    }, ANALYSIS_TIMEOUT)
 
     socket.on('analyze:chunk', handleChunk)
     socket.on('analyze:complete', handleComplete)
@@ -111,6 +169,15 @@ export function useSocketAnalysis() {
   const cancel = useCallback(() => {
     const socket = socketRef.current
     if (!socket) return
+    
+    // Clear timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+    
+    // Reset retry count
+    retryCountRef.current = 0
     
     // Remove all listeners for this analysis
     socket.off('analyze:chunk')

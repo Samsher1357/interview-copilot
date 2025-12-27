@@ -2,10 +2,15 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { TranscriptEntry } from '@/lib/store'
+import { retryWithBackoff } from '@/lib/utils/retryWithBackoff'
+
+const MAX_RECONNECT_ATTEMPTS = 5
+const RECONNECT_BASE_DELAY = 1000
 
 export function useDeepgram() {
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [interimTranscript, setInterimTranscript] = useState<string>('')
 
   const wsRef = useRef<WebSocket | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
@@ -68,6 +73,7 @@ export function useDeepgram() {
     cleanup()
     setIsConnected(false)
     setError(null)
+    setInterimTranscript('')
   }, [])
 
   const connect = useCallback(
@@ -84,10 +90,25 @@ export function useDeepgram() {
         transcriptBufferRef.current = ''
 
         const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-        const res = await fetch(`${api}/api/deepgram?language=${language}&diarize=false`)
-        if (!res.ok) throw new Error('Failed to fetch Deepgram connection')
-
-        const { wsUrl, apiKey } = await res.json()
+        
+        // Use retry logic for fetching Deepgram connection
+        const { wsUrl, apiKey } = await retryWithBackoff(
+          async () => {
+            const res = await fetch(`${api}/api/deepgram?language=${language}&diarize=false`)
+            if (!res.ok) {
+              throw new Error(`Failed to fetch Deepgram connection: ${res.status}`)
+            }
+            return res.json()
+          },
+          {
+            maxRetries: 3,
+            initialDelayMs: 1000,
+            onRetry: (attempt, error) => {
+              console.log(`Retrying Deepgram connection (attempt ${attempt}):`, error)
+              setError(`Connecting... (attempt ${attempt})`)
+            },
+          }
+        )
 
         // mic
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -111,6 +132,7 @@ export function useDeepgram() {
 
         ws.onopen = () => {
           setIsConnected(true)
+          setError(null)
           reconnectAttemptsRef.current = 0
           connectingRef.current = false
         }
@@ -137,29 +159,45 @@ export function useDeepgram() {
         ws.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data)
-            const alt = data.channel?.alternatives?.[0]
-            if (!alt || !data.is_final) return
+            
+            // Handle interim results for real-time display
+            if (data.type === 'Results') {
+              const alt = data.channel?.alternatives?.[0]
+              if (!alt) return
 
-            const text = alt.transcript?.trim()
+              const text = alt.transcript?.trim()
+              if (!text) return
 
-            if (text) {
-              if (!transcriptBufferRef.current) {
-                transcriptBufferRef.current = text
-              } else {
-                const existing = transcriptBufferRef.current
-                const normalizedExisting = existing.replace(/\s+/g, ' ').trim()
-                const normalizedIncoming = text.replace(/\s+/g, ' ').trim()
+              // Show interim results in real-time
+              if (!data.is_final) {
+                setInterimTranscript(text)
+                return
+              }
 
-                if (normalizedIncoming.startsWith(normalizedExisting)) {
+              // Clear interim when we get final
+              setInterimTranscript('')
+
+              // Only process final results for transcript buffer
+              if (data.is_final) {
+                if (!transcriptBufferRef.current) {
                   transcriptBufferRef.current = text
-                } else if (!normalizedExisting.startsWith(normalizedIncoming)) {
-                  transcriptBufferRef.current = `${existing} ${text}`.trim()
+                } else {
+                  const existing = transcriptBufferRef.current
+                  const normalizedExisting = existing.replace(/\s+/g, ' ').trim()
+                  const normalizedIncoming = text.replace(/\s+/g, ' ').trim()
+
+                  if (normalizedIncoming.startsWith(normalizedExisting)) {
+                    transcriptBufferRef.current = text
+                  } else if (!normalizedExisting.startsWith(normalizedIncoming)) {
+                    transcriptBufferRef.current = `${existing} ${text}`.trim()
+                  }
                 }
               }
-            }
 
-            if (data.speech_final) {
-              flushTranscript()
+              // Flush on speech_final (end of utterance)
+              if (data.speech_final) {
+                flushTranscript()
+              }
             }
           } catch {}
         }
@@ -174,9 +212,14 @@ export function useDeepgram() {
           cleanup()
           connectingRef.current = false
 
-          if (shouldReconnectRef.current && reconnectAttemptsRef.current < 5) {
+          // Exponential backoff for reconnection
+          if (shouldReconnectRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttemptsRef.current++
-            setTimeout(() => connect(language, onTranscript), 800)
+            const delay = RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttemptsRef.current - 1)
+            setError(`Reconnecting... (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`)
+            setTimeout(() => connect(language, onTranscript), delay)
+          } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+            setError('Failed to reconnect after multiple attempts')
           }
         }
       } catch (err: any) {
@@ -191,5 +234,5 @@ export function useDeepgram() {
 
   useEffect(() => disconnect, [disconnect])
 
-  return { connect, disconnect, isConnected, error }
+  return { connect, disconnect, isConnected, error, interimTranscript }
 }

@@ -5,28 +5,55 @@ import React, { Component, ErrorInfo, ReactNode } from 'react'
 interface Props {
   children: ReactNode
   fallback?: ReactNode
+  onError?: (error: Error, errorInfo: ErrorInfo) => void
 }
 
 interface State {
   hasError: boolean
   error: Error | null
+  errorCount: number
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  private errorTimeout: NodeJS.Timeout | null = null
+
   public state: State = {
     hasError: false,
     error: null,
+    errorCount: 0,
   }
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error }
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo)
+    
+    // Call custom error handler if provided
+    this.props.onError?.(error, errorInfo)
+    
+    // Increment error count
+    this.setState(prev => ({ errorCount: prev.errorCount + 1 }))
+    
+    // Auto-reset after 10 seconds if error count is low
+    if (this.state.errorCount < 3) {
+      this.errorTimeout = setTimeout(() => {
+        this.handleReset()
+      }, 10000)
+    }
+  }
+
+  public componentWillUnmount() {
+    if (this.errorTimeout) {
+      clearTimeout(this.errorTimeout)
+    }
   }
 
   private readonly handleReset = () => {
+    if (this.errorTimeout) {
+      clearTimeout(this.errorTimeout)
+    }
     this.setState({ hasError: false, error: null })
   }
 
@@ -35,6 +62,9 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) {
         return this.props.fallback
       }
+
+      // If too many errors, suggest page reload
+      const tooManyErrors = this.state.errorCount >= 3
 
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
@@ -55,18 +85,22 @@ export class ErrorBoundary extends Component<Props, State> {
               </svg>
             </div>
             <h2 className="text-xl font-bold text-center text-gray-900 dark:text-white mb-2">
-              Something went wrong
+              {tooManyErrors ? 'Multiple Errors Detected' : 'Something went wrong'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-4">
-              {this.state.error?.message || 'An unexpected error occurred'}
+              {tooManyErrors 
+                ? 'The application has encountered multiple errors. Please reload the page.'
+                : this.state.error?.message || 'An unexpected error occurred'}
             </p>
             <div className="flex gap-3">
-              <button
-                onClick={this.handleReset}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-              >
-                Try Again
-              </button>
+              {!tooManyErrors && (
+                <button
+                  onClick={this.handleReset}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  Try Again
+                </button>
+              )}
               <button
                 onClick={() => globalThis.location.reload()}
                 className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors"
@@ -77,7 +111,7 @@ export class ErrorBoundary extends Component<Props, State> {
             {process.env.NODE_ENV === 'development' && this.state.error && (
               <details className="mt-4 p-3 bg-gray-100 dark:bg-gray-900 rounded text-xs">
                 <summary className="cursor-pointer font-medium text-gray-700 dark:text-gray-300">
-                  Error Details
+                  Error Details (Count: {this.state.errorCount})
                 </summary>
                 <pre className="mt-2 text-red-600 dark:text-red-400 whitespace-pre-wrap break-words">
                   {this.state.error.stack}
@@ -91,4 +125,19 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children
   }
+}
+
+/**
+ * Hook to handle async errors in components
+ * Usage: const handleAsyncError = useAsyncError()
+ * Then: handleAsyncError(error) in catch blocks
+ */
+export function useAsyncError() {
+  const [, setError] = React.useState()
+  
+  return React.useCallback((error: Error) => {
+    setError(() => {
+      throw error
+    })
+  }, [])
 }

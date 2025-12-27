@@ -34,7 +34,7 @@ export function DeepgramTranscriber() {
     setError,
   } = store
 
-  const { connect, disconnect, isConnected, error: deepgramError } = useDeepgram()
+  const { connect, disconnect, isConnected, error: deepgramError, interimTranscript } = useDeepgram()
   const { analyzeWithStreaming, cancel: cancelStreaming } = useSocketAnalysis()
 
   /* ======================================================
@@ -52,12 +52,14 @@ export function DeepgramTranscriber() {
   const simpleRef = useRef(simpleEnglish)
   const modelRef = useRef(aiModel)
 
+  // Improved buffer with lock to prevent race conditions
   const transcriptBufferRef = useRef<{
     speaker: 'user'
     text: string
     timestamp: number
     lastChunkAt: number
     timeout: NodeJS.Timeout | null
+    isCommitting: boolean // Lock to prevent concurrent commits
   } | null>(null)
 
   /* ======================================================
@@ -88,17 +90,25 @@ export function DeepgramTranscriber() {
 
   const commitTranscriptBuffer = () => {
     const buffer = transcriptBufferRef.current
-    if (!buffer) return
+    if (!buffer || buffer.isCommitting) return
 
-    addTranscript({
-      id: `transcript-${Date.now()}-${Math.random()}`,
-      speaker: buffer.speaker,
-      text: buffer.text.trim(),
-      timestamp: buffer.timestamp,
-    })
+    // Set lock to prevent concurrent commits
+    buffer.isCommitting = true
 
-    transcriptBufferRef.current = null
-    triggerAnalysis()
+    try {
+      addTranscript({
+        id: `transcript-${Date.now()}-${Math.random()}`,
+        speaker: buffer.speaker,
+        text: buffer.text.trim(),
+        timestamp: buffer.timestamp,
+      })
+
+      transcriptBufferRef.current = null
+      triggerAnalysis()
+    } finally {
+      // Lock is released by setting buffer to null above
+      // or will be released when buffer is recreated
+    }
   }
 
   /* ======================================================
@@ -218,9 +228,26 @@ export function DeepgramTranscriber() {
 
     const buffer = transcriptBufferRef.current
 
-    if (buffer?.speaker === speaker) {
+    // Don't modify buffer if it's being committed
+    if (buffer?.isCommitting) {
+      // Create new buffer for this entry
+      transcriptBufferRef.current = {
+        speaker,
+        text: entry.text.trim(),
+        timestamp: now,
+        lastChunkAt: now,
+        timeout: null,
+        isCommitting: false,
+      }
+    } else if (buffer?.speaker === speaker) {
+      // Clear existing timeout before modifying
+      if (buffer.timeout) {
+        clearTimeout(buffer.timeout)
+      }
+      
       buffer.text += ' ' + entry.text.trim()
       buffer.lastChunkAt = now
+      buffer.timeout = null
     } else {
       if (buffer) commitTranscriptBuffer()
       transcriptBufferRef.current = {
@@ -229,14 +256,18 @@ export function DeepgramTranscriber() {
         timestamp: now,
         lastChunkAt: now,
         timeout: null,
+        isCommitting: false,
       }
     }
 
-    clearTimeout(transcriptBufferRef.current?.timeout!)
-    transcriptBufferRef.current!.timeout = setTimeout(
-      commitTranscriptBuffer,
-      timeoutMs
-    )
+    // Set new timeout
+    const currentBuffer = transcriptBufferRef.current
+    if (currentBuffer && !currentBuffer.isCommitting) {
+      currentBuffer.timeout = setTimeout(
+        commitTranscriptBuffer,
+        timeoutMs
+      )
+    }
   }
 
   /* ======================================================
@@ -285,6 +316,17 @@ export function DeepgramTranscriber() {
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
         <p className="text-blue-800 dark:text-blue-200 text-sm">
           🔄 Connecting to Deepgram…
+        </p>
+      </div>
+    )
+  }
+
+  // Show interim transcript in real-time
+  if (interimTranscript) {
+    return (
+      <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 mt-4">
+        <p className="text-gray-600 dark:text-gray-400 text-sm italic">
+          🎤 {interimTranscript}
         </p>
       </div>
     )

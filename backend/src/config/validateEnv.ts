@@ -12,38 +12,24 @@ export function validateEnvironment(): void {
   const errors: EnvValidationError[] = []
   const warnings: string[] = []
 
-  // Required variables
-  const required: Record<string, string> = {
-    DEEPGRAM_API_KEY: 'Deepgram API key is required for speech recognition',
+  // Required: At least one AI provider
+  const hasOpenAI = !!process.env.OPENAI_API_KEY
+  const hasGemini = !!process.env.GOOGLE_API_KEY
+
+  if (!hasOpenAI && !hasGemini) {
+    errors.push({
+      variable: 'OPENAI_API_KEY or GOOGLE_API_KEY',
+      message: 'At least one AI provider API key is required',
+    })
   }
 
-  // AI Provider validation
-  const aiProvider = process.env.AI_PROVIDER || 'openai'
-  
-  if (aiProvider === 'openai') {
-    if (!process.env.OPENAI_API_KEY) {
-      errors.push({
-        variable: 'OPENAI_API_KEY',
-        message: 'OpenAI API key is required when using OpenAI provider',
-      })
-    }
-  } else if (aiProvider === 'gemini') {
-    if (!process.env.GOOGLE_API_KEY) {
-      errors.push({
-        variable: 'GOOGLE_API_KEY',
-        message: 'Google API key is required when using Gemini provider',
-      })
-    }
-  } else {
-    warnings.push(`Unknown AI provider: ${aiProvider}. Defaulting to OpenAI.`)
+  // Required: Deepgram for speech recognition
+  if (!process.env.DEEPGRAM_API_KEY) {
+    errors.push({
+      variable: 'DEEPGRAM_API_KEY',
+      message: 'Deepgram API key is required for speech recognition',
+    })
   }
-
-  // Check other required variables
-  Object.entries(required).forEach(([key, message]) => {
-    if (!process.env[key]) {
-      errors.push({ variable: key, message })
-    }
-  })
 
   // Optional but recommended variables
   if (!process.env.CORS_ORIGIN) {
@@ -72,22 +58,4 @@ export function validateEnvironment(): void {
   }
 
   console.log('✅ Environment validation passed')
-}
-
-/**
- * Get environment configuration with defaults
- */
-export function getEnvConfig() {
-  return {
-    port: Number.parseInt(process.env.PORT || '3001', 10),
-    corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    aiProvider: (process.env.AI_PROVIDER || 'openai') as 'openai' | 'gemini',
-    openaiApiKey: process.env.OPENAI_API_KEY,
-    openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-    googleApiKey: process.env.GOOGLE_API_KEY,
-    geminiModel: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
-    aiMaxTokens: Number.parseInt(process.env.AI_MAX_TOKENS || '1200', 10),
-    deepgramApiKey: process.env.DEEPGRAM_API_KEY!,
-    nodeEnv: process.env.NODE_ENV || 'development',
-  }
 }

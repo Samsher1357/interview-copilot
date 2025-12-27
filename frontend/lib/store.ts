@@ -27,6 +27,12 @@ export interface InterviewContext {
   customNotes?: string
 }
 
+// Memory management constants
+const MAX_TRANSCRIPTS = 100 // Keep last 100 transcripts
+const MAX_AI_RESPONSES = 50 // Keep last 50 AI responses
+const CLEANUP_THRESHOLD = 120 // Trigger cleanup when exceeding this
+const CLEANUP_INTERVAL = 60000 // Auto-cleanup every 60 seconds
+
 interface InterviewState {
   isListening: boolean
   transcripts: TranscriptEntry[]
@@ -37,7 +43,6 @@ interface InterviewState {
   error: string | null
   isAnalyzing: boolean
   interviewContext: InterviewContext
-  showContextModal: boolean
   sessionStartTime: number | null
   toasts: ToastMessage[]
   
@@ -53,7 +58,6 @@ interface InterviewState {
   setError: (error: string | null) => void
   setIsAnalyzing: (isAnalyzing: boolean) => void
   setInterviewContext: (context: InterviewContext) => void
-  setShowContextModal: (show: boolean) => void
   clearTranscripts: () => void
   clearResponses: () => void
   clearAll: () => void
@@ -61,6 +65,7 @@ interface InterviewState {
   addToast: (toast: Omit<ToastMessage, 'id'>) => void
   removeToast: (id: string) => void
   showToast: (type: ToastMessage['type'], message: string, description?: string) => void
+  cleanupOldData: () => void
 }
 
 // Helper to safely access localStorage
@@ -84,7 +89,6 @@ export const useInterviewStore = create<InterviewState>()(
       error: null,
       isAnalyzing: false,
       interviewContext: {},
-      showContextModal: false,
       sessionStartTime: null,
       toasts: [],
   
@@ -94,7 +98,7 @@ export const useInterviewStore = create<InterviewState>()(
   })),
   addTranscript: (entry) => {
     const state = get()
-    const transcripts = [...state.transcripts]
+    let transcripts = [...state.transcripts]
     const lastTranscript = transcripts[transcripts.length - 1]
     
     // Merge transcripts from same speaker within 1 second
@@ -109,11 +113,16 @@ export const useInterviewStore = create<InterviewState>()(
         timestamp: lastTranscript.timestamp,
       }
       transcripts[transcripts.length - 1] = merged
-      set({ transcripts })
-      return
+    } else {
+      transcripts.push(entry)
     }
     
-    set({ transcripts: [...transcripts, entry] })
+    // Auto-cleanup if exceeding threshold
+    if (transcripts.length > CLEANUP_THRESHOLD) {
+      transcripts = transcripts.slice(-MAX_TRANSCRIPTS)
+    }
+    
+    set({ transcripts })
   },
   mergeNearbyTranscripts: () => {
     const state = get()
@@ -149,9 +158,16 @@ export const useInterviewStore = create<InterviewState>()(
       set({ transcripts: merged })
     }
   },
-  addAIResponse: (response) => set((state) => ({
-    aiResponses: [...state.aiResponses, response]
-  })),
+  addAIResponse: (response) => set((state) => {
+    let aiResponses = [...state.aiResponses, response]
+    
+    // Auto-cleanup if exceeding threshold
+    if (aiResponses.length > CLEANUP_THRESHOLD) {
+      aiResponses = aiResponses.slice(-MAX_AI_RESPONSES)
+    }
+    
+    return { aiResponses }
+  }),
   updateAIResponse: (id, updates) => set((state) => ({
     aiResponses: state.aiResponses.map(r => 
       r.id === id ? { ...r, ...updates } : r
@@ -166,7 +182,6 @@ export const useInterviewStore = create<InterviewState>()(
   setError: (error) => set({ error }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
   setInterviewContext: (context) => set({ interviewContext: context }),
-  setShowContextModal: (show) => set({ showContextModal: show }),
   clearTranscripts: () => set({ transcripts: [] }),
   clearResponses: () => set({ aiResponses: [] }),
   clearAll: () => set({
@@ -196,6 +211,10 @@ export const useInterviewStore = create<InterviewState>()(
     const toast: Omit<ToastMessage, 'id'> = { type, message, description }
     get().addToast(toast)
   },
+  cleanupOldData: () => set((state) => ({
+    transcripts: state.transcripts.slice(-MAX_TRANSCRIPTS),
+    aiResponses: state.aiResponses.slice(-MAX_AI_RESPONSES),
+  })),
 }),
     {
       name: 'interview-copilot-storage',
