@@ -71,12 +71,15 @@ export function CleanInterviewUI() {
 
   const isGenerating = isAnalyzing || !!streamingIdRef.current
 
+  // FIX: Only auto-scroll when transcript is visible
   useEffect(() => {
-    transcriptRef.current?.scrollTo({
-      top: transcriptRef.current.scrollHeight,
-      behavior: 'smooth'
-    })
-  }, [fullTranscript])
+    if (showTranscript && transcriptRef.current) {
+      transcriptRef.current.scrollTo({
+        top: transcriptRef.current.scrollHeight,
+        behavior: 'smooth'
+      })
+    }
+  }, [fullTranscript, showTranscript])
 
   /* -------------------- ACTIONS -------------------- */
   const handleAnalyze = async () => {
@@ -148,9 +151,18 @@ export function CleanInterviewUI() {
       {/* ================= HEADER ================= */}
       <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div>
-            <h1 className="text-lg font-bold">AI Interview Copilot</h1>
-            <p className="text-sm text-slate-500">Real-time assistance</p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-lg font-bold">AI Interview Copilot</h1>
+              <p className="text-sm text-slate-500">Real-time assistance</p>
+            </div>
+            {/* FIX: Persistent recording indicator */}
+            {isListening && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-red-100 dark:bg-red-900/30 rounded-full">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-xs font-semibold text-red-700 dark:text-red-400">Recording</span>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3">
@@ -165,7 +177,8 @@ export function CleanInterviewUI() {
       </header>
 
       {/* ================= MAIN CONTENT ================= */}
-      <main className="flex-1 flex flex-col gap-4 px-4 py-4 max-w-6xl mx-auto w-full overflow-hidden">
+      {/* FIX: Single scroll container with bottom padding for fixed footer */}
+      <main className="flex-1 flex flex-col gap-4 px-4 py-4 pb-36 max-w-6xl mx-auto w-full overflow-y-auto">
         {/* -------- TRANSCRIPT (COLLAPSIBLE) -------- */}
         <section className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
           <button
@@ -189,8 +202,8 @@ export function CleanInterviewUI() {
           )}
         </section>
 
-        {/* -------- AI ANSWER (EXPANDS PROPERLY) -------- */}
-        <section className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex-1 flex flex-col min-h-0">
+        {/* -------- AI ANSWER -------- */}
+        <section className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 min-h-[400px]">
           <div className="px-4 py-3 flex justify-between items-center border-b border-slate-200 dark:border-slate-800">
             <h2 className="text-base font-bold flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-amber-500" />
@@ -207,16 +220,16 @@ export function CleanInterviewUI() {
             )}
           </div>
 
-          <div className="flex-1 p-4 overflow-y-auto text-base leading-relaxed">
+          <div className="p-4 text-base leading-relaxed">
             {latestAnswer ? (
               <FormattedContent content={latestAnswer.content} />
             ) : isGenerating ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-500">
+              <div className="flex flex-col items-center justify-center py-12 text-slate-500">
                 <Loader2 className="w-10 h-10 animate-spin mb-4" />
                 <p className="text-lg">Generating response...</p>
               </div>
             ) : (
-              <div className="h-full flex items-center justify-center">
+              <div className="flex items-center justify-center py-12">
                 <p className="text-slate-400 text-center text-lg">
                   Tap <span className="font-semibold">Analyze</span> to get an answer
                 </p>
@@ -229,14 +242,15 @@ export function CleanInterviewUI() {
       {/* ================= BOTTOM BAR (SAFE AREA) ================= */}
       <footer className="fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
         <div className="px-4 py-4 flex gap-3 pb-[max(16px,env(safe-area-inset-bottom))]">
+          {/* FIX: Clearer recording button labels */}
           <button
             onClick={() => setIsListening(!isListening)}
             className={`flex-1 rounded-xl px-6 py-4 flex items-center justify-center gap-3 text-lg font-semibold transition-all shadow-lg ${
               isListening
-                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
+                ? 'bg-red-600 hover:bg-red-700 text-white'
                 : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
-            aria-label={isListening ? 'Stop recording' : 'Start recording'}
+            aria-label={isListening ? 'Stop' : 'Record'}
           >
             {isListening ? (
               <>
@@ -251,10 +265,15 @@ export function CleanInterviewUI() {
             )}
           </button>
 
+          {/* FIX: Better disabled state visibility */}
           <button
             onClick={handleAnalyze}
             disabled={isGenerating || transcripts.length === 0}
-            className="flex-1 rounded-xl px-6 py-4 flex items-center justify-center gap-3 text-lg font-semibold bg-slate-700 hover:bg-slate-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg"
+            className={`flex-1 rounded-xl px-6 py-4 flex items-center justify-center gap-3 text-lg font-semibold transition shadow-lg ${
+              isGenerating || transcripts.length === 0
+                ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                : 'bg-slate-700 hover:bg-slate-600 text-white'
+            }`}
             aria-label="Analyze transcript"
           >
             {isGenerating ? (
