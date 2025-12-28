@@ -9,9 +9,9 @@ import {
   Trash2,
   Settings,
   LogOut,
+  Loader2,
   ChevronUp,
-  ChevronDown,
-  Smartphone
+  ChevronDown
 } from 'lucide-react'
 
 import { useInterviewStore } from '@/lib/store'
@@ -47,11 +47,7 @@ export function CleanInterviewUI() {
   )
 
   const [showSetup, setShowSetup] = useState(!hasCompletedSetup)
-
-  /* -------------------- UI STATE -------------------- */
-  const [compactMode, setCompactMode] = useState(true)
   const [showTranscript, setShowTranscript] = useState(false)
-  const [isManualAnalyzing, setIsManualAnalyzing] = useState(false)
 
   /* -------------------- STREAMING -------------------- */
   const { analyzeWithStreaming, cancel } = useSocketAnalysis()
@@ -73,6 +69,8 @@ export function CleanInterviewUI() {
     [aiResponses]
   )
 
+  const isGenerating = isAnalyzing || !!streamingIdRef.current
+
   useEffect(() => {
     transcriptRef.current?.scrollTo({
       top: transcriptRef.current.scrollHeight,
@@ -82,9 +80,8 @@ export function CleanInterviewUI() {
 
   /* -------------------- ACTIONS -------------------- */
   const handleAnalyze = async () => {
-    if (!transcripts.length || isAnalyzing || isManualAnalyzing) return
+    if (!transcripts.length || isAnalyzing || streamingIdRef.current) return
 
-    setIsManualAnalyzing(true)
     setError(null)
     cancel()
 
@@ -122,11 +119,11 @@ export function CleanInterviewUI() {
           useInterviewStore.getState().removeAIResponse(streamingIdRef.current)
         }
         responses.forEach(addAIResponse)
-        setIsManualAnalyzing(false)
+        streamingIdRef.current = null
       },
       err => {
         setError(err)
-        setIsManualAnalyzing(false)
+        streamingIdRef.current = null
       }
     )
   }
@@ -137,6 +134,7 @@ export function CleanInterviewUI() {
     setIsListening(false)
     clearResponses()
     clearTranscripts()
+    streamingIdRef.current = null
     setShowSetup(true)
   }
 
@@ -145,131 +143,145 @@ export function CleanInterviewUI() {
     return <SetupScreen onStart={() => setShowSetup(false)} />
   }
 
-  /* =====================================================
-     UI
-  ===================================================== */
-
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950">
       {/* ================= HEADER ================= */}
       <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-6xl mx-auto px-4 py-2 flex justify-between items-center">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
           <div>
-            <h1 className="text-sm font-bold">AI Interview Copilot</h1>
-            <p className="text-xs text-slate-500">Real-time assistance</p>
+            <h1 className="text-lg font-bold">AI Interview Copilot</h1>
+            <p className="text-sm text-slate-500">Real-time assistance</p>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCompactMode(!compactMode)}
-              className="icon-btn"
-              title="Toggle compact mode"
-            >
-              <Smartphone className="w-4 h-4" />
+          <div className="flex gap-3">
+            <button onClick={() => setShowSetup(true)} className="icon-btn" aria-label="Settings">
+              <Settings className="w-5 h-5" />
             </button>
-
-            <button onClick={() => setShowSetup(true)} className="icon-btn">
-              <Settings className="w-4 h-4" />
-            </button>
-
-            <button onClick={handleEnd} className="icon-btn text-red-500">
-              <LogOut className="w-4 h-4" />
+            <button onClick={handleEnd} className="icon-btn text-red-500" aria-label="End session">
+              <LogOut className="w-5 h-5" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* ================= MAIN ================= */}
-      <main className="max-w-6xl mx-auto px-4 py-3 space-y-3">
+      {/* ================= MAIN CONTENT ================= */}
+      <main className="flex-1 flex flex-col gap-4 px-4 py-4 max-w-6xl mx-auto w-full overflow-hidden">
         {/* -------- TRANSCRIPT (COLLAPSIBLE) -------- */}
-        <div className="card">
+        <section className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
           <button
             onClick={() => setShowTranscript(!showTranscript)}
-            className="flex justify-between w-full px-3 py-2 text-xs font-semibold"
+            className="w-full px-4 py-3 flex justify-between items-center text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-t-xl transition"
+            aria-label="Toggle transcript"
           >
             <span>Transcript</span>
-            {showTranscript ? <ChevronUp /> : <ChevronDown />}
+            {showTranscript ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
           </button>
 
           {showTranscript && (
             <div
               ref={transcriptRef}
-              className="px-3 pb-3 text-xs max-h-32 overflow-y-auto"
+              className="px-4 pb-4 pt-2 text-sm text-slate-700 dark:text-slate-300 max-h-64 overflow-y-auto"
             >
               {fullTranscript || (
-                <p className="text-slate-400">Start speaking…</p>
+                <p className="text-slate-400 italic">Start speaking to see the transcript…</p>
               )}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* -------- ANSWER -------- */}
-        <div className="card flex flex-col h-[calc(100vh-280px)]">
-          <div className="flex justify-between items-center px-4 py-2 border-b">
-            <h2 className="text-sm font-bold flex items-center gap-2">
-              <Sparkles className="w-4 h-4" /> AI Answer
+        {/* -------- AI ANSWER (EXPANDS PROPERLY) -------- */}
+        <section className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex-1 flex flex-col min-h-0">
+          <div className="px-4 py-3 flex justify-between items-center border-b border-slate-200 dark:border-slate-800">
+            <h2 className="text-base font-bold flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-amber-500" />
+              AI Answer
             </h2>
-            {latestAnswer && (
+            {latestAnswer && !isGenerating && (
               <button
-                onClick={() =>
-                  navigator.clipboard.writeText(latestAnswer.content)
-                }
-                className="icon-btn"
+                onClick={() => navigator.clipboard.writeText(latestAnswer.content)}
+                className="icon-btn hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Copy answer"
               >
-                <Copy className="w-4 h-4" />
+                <Copy className="w-5 h-5" />
               </button>
             )}
           </div>
 
-          <div className="flex-1 p-4 overflow-y-auto text-sm">
+          <div className="flex-1 p-4 overflow-y-auto text-base leading-relaxed">
             {latestAnswer ? (
               <FormattedContent content={latestAnswer.content} />
+            ) : isGenerating ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-500">
+                <Loader2 className="w-10 h-10 animate-spin mb-4" />
+                <p className="text-lg">Generating response...</p>
+              </div>
             ) : (
-              <p className="text-slate-400 text-center mt-20">
-                Tap Analyze to get an answer
-              </p>
+              <div className="h-full flex items-center justify-center">
+                <p className="text-slate-400 text-center text-lg">
+                  Tap <span className="font-semibold">Analyze</span> to get an answer
+                </p>
+              </div>
             )}
           </div>
-        </div>
+        </section>
       </main>
 
-      {/* ================= BOTTOM BAR (MOBILE FIRST) ================= */}
-      <footer className="fixed bottom-0 inset-x-0 z-50 bg-white dark:bg-slate-900 border-t px-4 py-3 flex gap-3">
-        <button
-          onClick={() => setIsListening(!isListening)}
-          className={`flex-1 btn-primary ${
-            isListening ? 'bg-red-600' : ''
-          }`}
-        >
-          {isListening ? (
-            <>
-              <MicOff className="w-4 h-4" /> Stop
-            </>
-          ) : (
-            <>
-              <Mic className="w-4 h-4" /> Record
-            </>
-          )}
-        </button>
+      {/* ================= BOTTOM BAR (SAFE AREA) ================= */}
+      <footer className="fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+        <div className="px-4 py-4 flex gap-3 pb-[max(16px,env(safe-area-inset-bottom))]">
+          <button
+            onClick={() => setIsListening(!isListening)}
+            className={`flex-1 rounded-xl px-6 py-4 flex items-center justify-center gap-3 text-lg font-semibold transition-all shadow-lg ${
+              isListening
+                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+            aria-label={isListening ? 'Stop recording' : 'Start recording'}
+          >
+            {isListening ? (
+              <>
+                <MicOff className="w-6 h-6" />
+                Stop
+              </>
+            ) : (
+              <>
+                <Mic className="w-6 h-6" />
+                Record
+              </>
+            )}
+          </button>
 
-        <button
-          onClick={handleAnalyze}
-          disabled={isAnalyzing || isManualAnalyzing}
-          className="flex-1 btn-secondary"
-        >
-          <Sparkles className="w-4 h-4" />
-          Analyze
-        </button>
+          <button
+            onClick={handleAnalyze}
+            disabled={isGenerating || transcripts.length === 0}
+            className="flex-1 rounded-xl px-6 py-4 flex items-center justify-center gap-3 text-lg font-semibold bg-slate-700 hover:bg-slate-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg"
+            aria-label="Analyze transcript"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-6 h-6" />
+                Analyze
+              </>
+            )}
+          </button>
 
-        <button
-          onClick={() => {
-            clearResponses()
-            clearTranscripts()
-          }}
-          className="icon-btn text-red-500"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+          <button
+            onClick={() => {
+              clearResponses()
+              clearTranscripts()
+              streamingIdRef.current = null
+            }}
+            className="rounded-xl p-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition shadow-lg"
+            aria-label="Clear all"
+          >
+            <Trash2 className="w-6 h-6 text-red-500" />
+          </button>
+        </div>
       </footer>
 
       <DeepgramTranscriber />
