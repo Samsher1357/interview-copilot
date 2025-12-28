@@ -143,9 +143,9 @@ export function CleanInterviewUI() {
   if (showSetup) return <SetupScreen onStart={() => setShowSetup(false)} />
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
+    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
       {/* ================= HEADER ================= */}
-      <header className="flex-none bg-white/80 dark:bg-slate-950/80 backdrop-blur border-b border-slate-200 dark:border-slate-800 z-50">
+      <header className="flex-none bg-white/80 dark:bg-slate-950/80 backdrop-blur border-b border-slate-200 dark:border-slate-800 z-30 relative">
         <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div>
@@ -174,8 +174,8 @@ export function CleanInterviewUI() {
       </header>
 
       {/* ================= MAIN CONTENT (MANUAL SCROLL) ================= */}
-      <main className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth">
-        <div className="max-w-4xl mx-auto space-y-4 pb-32">
+      <main className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth relative z-10">
+        <div className="max-w-4xl mx-auto space-y-4 pb-40">
           
           {/* -------- TRANSCRIPT (COLLAPSIBLE) -------- */}
           <section className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -184,7 +184,12 @@ export function CleanInterviewUI() {
               className="w-full px-4 py-3 flex justify-between items-center text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
             >
               <span className="flex items-center gap-2">
-                <Mic className="w-4 h-4" /> Transcript
+                <Mic className="w-4 h-4 text-blue-500" /> Transcript
+                {transcripts.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full font-medium">
+                    {transcripts.length}
+                  </span>
+                )}
               </span>
               {showTranscript ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
             </button>
@@ -192,27 +197,32 @@ export function CleanInterviewUI() {
             {showTranscript && (
               <div
                 ref={transcriptRef}
-                className="px-4 pb-4 pt-2 text-sm text-slate-600 dark:text-slate-400 max-h-48 overflow-y-auto border-t border-slate-50 dark:border-slate-800"
+                className="px-4 pb-4 pt-2 text-sm text-slate-600 dark:text-slate-400 max-h-48 overflow-y-auto border-t border-slate-100 dark:border-slate-800 scrollbar-thin"
               >
-                {fullTranscript || (
-                  <p className="text-slate-400 italic">Waiting for speech...</p>
+                {fullTranscript ? (
+                  <p className="leading-relaxed">{fullTranscript}</p>
+                ) : (
+                  <p className="text-slate-400 dark:text-slate-500 italic">Waiting for speech...</p>
                 )}
               </div>
             )}
           </section>
 
           {/* -------- AI ANSWER SECTION -------- */}
-          <section className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 min-h-[450px] relative">
+          <section className="bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 min-h-[450px] relative">
             {/* Sticky sub-header for the answer box */}
-            <div className="sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm px-4 py-3 flex justify-between items-center border-b border-slate-200 dark:border-slate-800 rounded-t-xl z-20">
-              <h2 className="text-base font-bold flex items-center gap-2">
+            <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-slate-800 dark:to-slate-800 backdrop-blur-sm px-4 py-3 flex justify-between items-center border-b border-slate-200 dark:border-slate-700 rounded-t-xl z-10">
+              <h2 className="text-base font-bold flex items-center gap-2 text-slate-800 dark:text-slate-100">
                 <Sparkles className="w-5 h-5 text-amber-500" />
                 AI Answer
               </h2>
               {latestAnswer && !isGenerating && (
                 <button
-                  onClick={() => navigator.clipboard.writeText(latestAnswer.content)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition"
+                  onClick={() => {
+                    navigator.clipboard.writeText(latestAnswer.content)
+                    // Optional: Show a toast notification
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-700 hover:bg-blue-50 dark:hover:bg-slate-600 rounded-lg transition shadow-sm border border-slate-200 dark:border-slate-600"
                 >
                   <Copy className="w-3.5 h-3.5" /> Copy
                 </button>
@@ -224,21 +234,21 @@ export function CleanInterviewUI() {
                 <div className="prose dark:prose-invert max-w-none">
                   <FormattedContent content={latestAnswer.content} />
                   {isGenerating && (
-                    <span className="inline-block w-1.5 h-5 ml-2 bg-blue-500 animate-pulse align-middle" />
+                    <span className="inline-block w-1.5 h-5 ml-2 bg-blue-500 animate-pulse align-middle rounded-sm" />
                   )}
                 </div>
               ) : isGenerating ? (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-500">
                   <Loader2 className="w-10 h-10 animate-spin mb-4 text-blue-500" />
-                  <p className="text-lg font-medium">Generating response...</p>
+                  <p className="text-lg font-medium text-slate-700 dark:text-slate-300">Generating response...</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-20">
-                  <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
-                    <Sparkles className="w-8 h-8 text-slate-300" />
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-800 dark:to-slate-700 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                    <Sparkles className="w-8 h-8 text-slate-400 dark:text-slate-500" />
                   </div>
-                  <p className="text-slate-400 text-center text-lg">
-                    Speak into the mic, then tap <span className="text-blue-600 font-semibold">Analyze</span>
+                  <p className="text-slate-500 dark:text-slate-400 text-center text-lg">
+                    Speak into the mic, then tap <span className="text-blue-600 dark:text-blue-400 font-semibold">Analyze</span>
                   </p>
                 </div>
               )}
@@ -248,7 +258,7 @@ export function CleanInterviewUI() {
       </main>
 
       {/* ================= FIXED BOTTOM BAR ================= */}
-      <footer className="flex-none bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgb(0,0,0,0.04)] z-50">
+      <footer className="flex-none bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t-2 border-slate-300 dark:border-slate-700 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_-8px_30px_rgb(0,0,0,0.5)] z-40 relative">
         <div className="max-w-4xl mx-auto flex gap-3">
           <button
             onClick={() => setIsListening(!isListening)}

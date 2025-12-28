@@ -50,6 +50,15 @@ OUTPUT FORMAT (STRICT — DO NOT DEVIATE)
 • [Optional: trade-offs, real-world usage, or metrics]
 
 --------------------------------------------------
+FORMATTING RULES
+--------------------------------------------------
+- Use ==text== to highlight KEY TERMS, important concepts, or critical points
+- Use **text** for emphasis on important phrases
+- Example: "I used ==React== and ==TypeScript== to build a **scalable component library**"
+- Highlight technical terms, frameworks, methodologies, and results
+- Use highlights sparingly (2-4 per answer) for maximum impact
+
+--------------------------------------------------
 QUESTION DETECTION RULES
 --------------------------------------------------
 - Prefer the **latest interviewer intent**
