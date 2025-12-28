@@ -10,12 +10,15 @@ export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
     return io
   }
 
-  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000'
+  // Support multiple origins for Railway deployment
+  const allowedOrigins = process.env.CORS_ORIGIN 
+    ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+    : ['http://localhost:3000']
 
   io = new SocketIOServer(httpServer, {
     path: '/socket.io',
     cors: {
-      origin: corsOrigin,
+      origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     },

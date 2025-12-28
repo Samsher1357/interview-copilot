@@ -5,8 +5,8 @@ import { Request, Response, NextFunction } from 'express'
  * Adds various security headers to protect against common vulnerabilities
  */
 export function securityHeaders(req: Request, res: Response, next: NextFunction) {
-  // Prevent clickjacking attacks
-  res.setHeader('X-Frame-Options', 'DENY')
+  // Prevent clickjacking attacks (allow same origin for Railway preview deployments)
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN')
   
   // Prevent MIME type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -17,11 +17,13 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Referrer policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   
-  // Content Security Policy (adjust as needed)
-  res.setHeader(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
-  )
+  // Content Security Policy (relaxed for Railway deployment)
+  // Adjust as needed based on your security requirements
+  const csp = process.env.NODE_ENV === 'production'
+    ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data: https:;"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+  
+  res.setHeader('Content-Security-Policy', csp)
   
   // Remove X-Powered-By header to hide Express
   res.removeHeader('X-Powered-By')
