@@ -38,11 +38,9 @@ export function CleanInterviewUI() {
 
   const { analyzeWithStreaming, cancel: cancelStreaming } = useSocketAnalysis()
   const transcriptRef = useRef<HTMLDivElement>(null)
-  const answerRef = useRef<HTMLDivElement>(null)
   const streamingResponseRef = useRef<string>('')
   const streamingResponseIdRef = useRef<string | null>(null)
   const [isManualAnalyzing, setIsManualAnalyzing] = useState(false)
-  const [questionDetected, setQuestionDetected] = useState(false)
 
   // Combine all transcript text into one continuous string
   const fullTranscript = transcripts.map(t => t.text).join(' ')
@@ -51,47 +49,6 @@ export function CleanInterviewUI() {
   const latestAnswer = aiResponses.length > 0 
     ? [...aiResponses].sort((a, b) => b.timestamp - a.timestamp)[0]
     : null
-
-  // Smart question detection
-  const isLikelyQuestion = (text: string) => {
-    const normalized = text.trim().toLowerCase()
-    if (!normalized) return false
-    if (normalized.endsWith('?')) return true
-    
-    const questionStarters = /^(what|why|how|when|where|who|which|can you|could you|would you|will you|do you|tell me|describe|explain|walk me through|give me)/i
-    if (questionStarters.test(normalized)) return true
-    
-    const interviewPatterns = [
-      /tell me (about|more)/i,
-      /describe (your|how|the)/i,
-      /explain (how|why|what|the)/i,
-      /walk me through/i,
-      /give me (an? )?example/i,
-    ]
-    
-    return interviewPatterns.some(pattern => pattern.test(normalized))
-  }
-
-  // Detect meaningful speech in transcript
-  useEffect(() => {
-    if (transcripts.length > 0) {
-      const lastTranscript = transcripts[transcripts.length - 1]
-      const text = lastTranscript.text.trim()
-      
-      // Check if it's meaningful content (not just filler words)
-      const ignoredPhrases = /^(ok|okay|yes|no|yeah|yep|nope|uh|um|hmm|ah|eh|right|sure|mhm|uh-huh)$/i
-      const isMeaningful = text.length >= 5 && !ignoredPhrases.test(text.toLowerCase())
-      
-      if (isMeaningful) {
-        const detected = isLikelyQuestion(text)
-        setQuestionDetected(detected)
-        
-        // Auto-hide after 2 seconds
-        const timer = setTimeout(() => setQuestionDetected(false), 2000)
-        return () => clearTimeout(timer)
-      }
-    }
-  }, [transcripts])
 
   // Auto-scroll transcript only
   useEffect(() => {
@@ -124,7 +81,7 @@ export function CleanInterviewUI() {
     streamingResponseIdRef.current = null
 
     try {
-      await analyzeWithStreaming(
+      analyzeWithStreaming(
         transcripts.slice(-8), // Use last 8 transcripts
         currentLanguage.split('-')[0],
         interviewContext,
@@ -198,7 +155,21 @@ export function CleanInterviewUI() {
 
   const handleEndSession = () => {
     if (confirm('End this interview session? All data will be cleared and you will return to setup.')) {
-      // Stop listening if active
+      // Cancel any ongoing streaming analysis
+      cancelStreaming()
+      
+      // Clear streaming refs
+      streamingResponseRef.current = ''
+      if (streamingResponseIdRef.current) {
+        const { removeAIResponse } = useInterviewStore.getState()
+        removeAIResponse(streamingResponseIdRef.current)
+        streamingResponseIdRef.current = null
+      }
+      
+      // Stop manual analyzing state
+      setIsManualAnalyzing(false)
+      
+      // Stop listening if active (this will trigger DeepgramTranscriber cleanup)
       if (isListening) {
         setIsListening(false)
       }
@@ -206,6 +177,7 @@ export function CleanInterviewUI() {
       // Clear all data
       clearTranscripts()
       clearResponses()
+      setError(null)
       
       const { showToast } = useInterviewStore.getState()
       showToast('info', 'Session Ended', 'Your interview session has been ended')
@@ -311,18 +283,12 @@ export function CleanInterviewUI() {
           </div>
 
           {/* Status Indicators */}
-          {(isListening || questionDetected || isAnalyzing || isManualAnalyzing) && (
+          {(isListening || isAnalyzing || isManualAnalyzing) && (
             <div className="mt-4 flex items-center justify-center gap-3 flex-wrap animate-fade-in">
               {isListening && (
                 <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                   <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                   <span className="text-xs sm:text-sm font-medium text-red-700 dark:text-red-400">Recording</span>
-                </div>
-              )}
-              {questionDetected && !isAnalyzing && !isManualAnalyzing && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
-                  <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-pulse" />
-                  <span className="text-xs sm:text-sm font-medium text-purple-700 dark:text-purple-400">Question Detected</span>
                 </div>
               )}
               {(isAnalyzing || isManualAnalyzing) && (
@@ -385,13 +351,10 @@ export function CleanInterviewUI() {
               )}
             </div>
             <div
-              ref={answerRef}
-              className="p-4 sm:p-6 h-[calc(100vh-420px)] sm:h-[400px] lg:h-[calc(100vh-400px)] overflow-y-auto scrollbar-thin"
+              className="p-6 sm:p-8 h-[calc(100vh-420px)] sm:h-[400px] lg:h-[calc(100vh-400px)] overflow-y-auto scrollbar-thin"
             >
               {latestAnswer ? (
-                <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none">
-                  <FormattedContent content={latestAnswer.content} />
-                </div>
+                <FormattedContent content={latestAnswer.content} />
               ) : (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center">

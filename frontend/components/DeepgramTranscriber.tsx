@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useInterviewStore, TranscriptEntry } from '@/lib/store'
 import { useSocketAnalysis } from '@/lib/hooks/useSocketAnalysis'
 import { useDeepgram } from '@/lib/hooks/useDeepgram'
-import { perfMonitor } from '@/lib/utils/performanceMonitor'
+import { isNoise } from '@/lib/utils/textFilters'
 
 /* ======================================================
    CONSTANTS
@@ -14,9 +14,6 @@ const MAX_TRANSCRIPTS_FOR_ANALYSIS = 8
 const MIN_ANALYSIS_INTERVAL = 500
 const STREAM_BUFFER_DESKTOP = 100
 const STREAM_BUFFER_MOBILE = 150
-
-const IGNORED_PHRASES =
-  /^(ok|okay|yes|no|yeah|yep|nope|uh|um|hmm|ah|eh|right|sure|mhm|uh-huh)$/i
 
 /* ======================================================
    COMPONENT
@@ -52,14 +49,12 @@ export function DeepgramTranscriber() {
   const simpleRef = useRef(simpleEnglish)
   const modelRef = useRef(aiModel)
 
-  // Improved buffer with lock to prevent race conditions
+  // Transcript buffer
   const transcriptBufferRef = useRef<{
     speaker: 'user'
     text: string
     timestamp: number
-    lastChunkAt: number
     timeout: NodeJS.Timeout | null
-    isCommitting: boolean // Lock to prevent concurrent commits
   } | null>(null)
 
   /* ======================================================
@@ -80,35 +75,19 @@ export function DeepgramTranscriber() {
      UTILITIES
   ====================================================== */
 
-  const isNoise = (text: string): boolean => {
-    const t = text.trim().toLowerCase()
-    if (t.length < 3) return true
-    if (IGNORED_PHRASES.test(t)) return true
-    if (/^[^\w\s]+$/.test(t)) return true
-    return false
-  }
-
   const commitTranscriptBuffer = () => {
     const buffer = transcriptBufferRef.current
-    if (!buffer || buffer.isCommitting) return
+    if (!buffer) return
 
-    // Set lock to prevent concurrent commits
-    buffer.isCommitting = true
+    addTranscript({
+      id: `transcript-${Date.now()}-${Math.random()}`,
+      speaker: buffer.speaker,
+      text: buffer.text.trim(),
+      timestamp: buffer.timestamp,
+    })
 
-    try {
-      addTranscript({
-        id: `transcript-${Date.now()}-${Math.random()}`,
-        speaker: buffer.speaker,
-        text: buffer.text.trim(),
-        timestamp: buffer.timestamp,
-      })
-
-      transcriptBufferRef.current = null
-      triggerAnalysis()
-    } finally {
-      // Lock is released by setting buffer to null above
-      // or will be released when buffer is recreated
-    }
+    transcriptBufferRef.current = null
+    triggerAnalysis()
   }
 
   /* ======================================================
@@ -149,11 +128,10 @@ export function DeepgramTranscriber() {
     streamingIdRef.current = null
 
     try {
-      perfMonitor.start('ai-analysis')
       state.setIsAnalyzing(true)
       state.setError(null)
 
-      await analyzeWithStreaming(
+      analyzeWithStreaming(
         transcripts,
         langRef.current.split('-')[0],
         state.interviewContext,
@@ -192,8 +170,6 @@ export function DeepgramTranscriber() {
   }
 
   const onStreamComplete = (responses: any[]) => {
-    perfMonitor.end('ai-analysis')
-
     if (streamingIdRef.current) {
       useInterviewStore.getState().removeAIResponse(streamingIdRef.current)
       streamingIdRef.current = null
@@ -224,49 +200,26 @@ export function DeepgramTranscriber() {
       ? STREAM_BUFFER_MOBILE
       : STREAM_BUFFER_DESKTOP
 
-    const speaker = 'user' // All transcripts are from the user/candidate
-
+    const speaker = 'user'
     const buffer = transcriptBufferRef.current
 
-    // Don't modify buffer if it's being committed
-    if (buffer?.isCommitting) {
-      // Create new buffer for this entry
-      transcriptBufferRef.current = {
-        speaker,
-        text: entry.text.trim(),
-        timestamp: now,
-        lastChunkAt: now,
-        timeout: null,
-        isCommitting: false,
-      }
-    } else if (buffer?.speaker === speaker) {
-      // Clear existing timeout before modifying
+    if (buffer?.speaker === speaker) {
+      // Clear existing timeout
       if (buffer.timeout) {
         clearTimeout(buffer.timeout)
       }
       
       buffer.text += ' ' + entry.text.trim()
-      buffer.lastChunkAt = now
-      buffer.timeout = null
+      buffer.timeout = setTimeout(commitTranscriptBuffer, timeoutMs)
     } else {
       if (buffer) commitTranscriptBuffer()
+      
       transcriptBufferRef.current = {
         speaker,
         text: entry.text.trim(),
         timestamp: now,
-        lastChunkAt: now,
-        timeout: null,
-        isCommitting: false,
+        timeout: setTimeout(commitTranscriptBuffer, timeoutMs),
       }
-    }
-
-    // Set new timeout
-    const currentBuffer = transcriptBufferRef.current
-    if (currentBuffer && !currentBuffer.isCommitting) {
-      currentBuffer.timeout = setTimeout(
-        commitTranscriptBuffer,
-        timeoutMs
-      )
     }
   }
 
