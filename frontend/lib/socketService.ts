@@ -4,52 +4,72 @@ import { io, Socket } from 'socket.io-client'
 
 class SocketService {
   private socket: Socket | null = null
-  private connecting = false
+  private socketPromise: Promise<Socket> | null = null
 
-  getSocket(): Socket {
+  async getSocket(): Promise<Socket> {
+    // Return existing connected socket
     if (this.socket?.connected) {
       return this.socket
     }
 
-    if (this.connecting && this.socket) {
-      return this.socket
+    // Return pending connection promise to prevent race condition
+    if (this.socketPromise) {
+      return this.socketPromise
     }
 
-    this.connecting = true
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+    // Create new connection
+    this.socketPromise = this.createSocket()
     
-    this.socket = io(apiUrl, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
-      autoConnect: true,
-    })
+    try {
+      this.socket = await this.socketPromise
+      return this.socket
+    } finally {
+      this.socketPromise = null
+    }
+  }
 
-    this.socket.on('connect', () => {
-      console.log('✅ Socket connected:', this.socket?.id)
-      this.connecting = false
-    })
+  private createSocket(): Promise<Socket> {
+    return new Promise((resolve, reject) => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+      
+      const socket = io(apiUrl, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+        autoConnect: true,
+        timeout: 10000,
+      })
 
-    this.socket.on('disconnect', (reason) => {
-      console.log('❌ Socket disconnected:', reason)
-      this.connecting = false
-    })
+      const connectTimeout = setTimeout(() => {
+        socket.close()
+        reject(new Error('Socket connection timeout'))
+      }, 10000)
 
-    this.socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error)
-      this.connecting = false
-    })
+      socket.on('connect', () => {
+        clearTimeout(connectTimeout)
+        console.log('✅ Socket connected:', socket.id)
+        resolve(socket)
+      })
 
-    return this.socket
+      socket.on('disconnect', (reason) => {
+        console.log('❌ Socket disconnected:', reason)
+      })
+
+      socket.on('connect_error', (error) => {
+        clearTimeout(connectTimeout)
+        console.error('Socket connection error:', error)
+        reject(error)
+      })
+    })
   }
 
   disconnect() {
     if (this.socket) {
       this.socket.disconnect()
       this.socket = null
-      this.connecting = false
     }
+    this.socketPromise = null
   }
 }
 

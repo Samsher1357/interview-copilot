@@ -51,37 +51,49 @@ export class LangChainService {
     const latest = transcripts.at(-1)
     if (!latest || latest.speaker !== 'user') return
 
-    const llm = this.getLLM(aiModel)
+    try {
+      const llm = this.getLLM(aiModel)
 
-    const systemPrompt = this.buildSystemPrompt({
-      language,
-      transcripts,
-      interviewContext,
-      latestQuestion: latest.text,
-      simpleEnglish,
-    })
+      const systemPrompt = this.buildSystemPrompt({
+        language,
+        transcripts,
+        interviewContext,
+        latestQuestion: latest.text,
+        simpleEnglish,
+      })
 
-    const stream = await llm.stream([
-      new SystemMessage(systemPrompt),
-      new HumanMessage(latest.text),
-    ])
+      const stream = await llm.stream([
+        new SystemMessage(systemPrompt),
+        new HumanMessage(latest.text),
+      ])
 
-    let buffer = ''
+      let buffer = ''
 
-    for await (const chunk of stream) {
-      const token = typeof chunk.content === 'string' ? chunk.content : ''
-      if (!token) continue
+      try {
+        for await (const chunk of stream) {
+          const token = typeof chunk.content === 'string' ? chunk.content : ''
+          if (!token) continue
 
-      buffer += token
+          buffer += token
 
-      // 🔥 Flush early for real-time UX
-      if (buffer.length >= STREAM_FLUSH_CHARS || /[.!?\n]/.test(token)) {
-        yield buffer
-        buffer = ''
+          // 🔥 Flush early for real-time UX
+          if (buffer.length >= STREAM_FLUSH_CHARS || /[.!?\n]/.test(token)) {
+            yield buffer
+            buffer = ''
+          }
+        }
+
+        if (buffer) yield buffer
+      } catch (streamError) {
+        console.error('Stream iteration error:', streamError)
+        // Yield any buffered content before throwing
+        if (buffer) yield buffer
+        throw new Error('Streaming interrupted: ' + (streamError instanceof Error ? streamError.message : 'Unknown error'))
       }
+    } catch (error) {
+      console.error('LangChain streaming error:', error)
+      throw new Error('AI analysis failed: ' + (error instanceof Error ? error.message : 'Unknown error'))
     }
-
-    if (buffer) yield buffer
   }
 
   /* ======================================================

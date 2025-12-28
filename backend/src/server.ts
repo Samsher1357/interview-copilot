@@ -40,6 +40,25 @@ app.use(cors(corsOptions))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
+// Request timeout middleware
+app.use((req, res, next) => {
+  // Set timeout for request (30 seconds)
+  req.setTimeout(30000, () => {
+    console.error('Request timeout:', req.method, req.path)
+    res.status(408).json({ error: 'Request timeout' })
+  })
+  
+  // Set timeout for response (30 seconds)
+  res.setTimeout(30000, () => {
+    console.error('Response timeout:', req.method, req.path)
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Response timeout' })
+    }
+  })
+  
+  next()
+})
+
 // Security middleware
 app.use(securityHeaders)
 app.use(requestLogger)

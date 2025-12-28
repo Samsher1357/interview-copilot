@@ -33,7 +33,8 @@ export function useDeepgram() {
 
     // PRIORITY 2: Close WebSocket to stop data flow
     if (wsRef.current) {
-      wsRef.current.close(1000, 'User stopped recording') // Clean close
+      // Use standard close code without reason string for better compatibility
+      wsRef.current.close(1000)
       wsRef.current = null
     }
 
@@ -119,6 +120,11 @@ export function useDeepgram() {
         // audio ctx
         const ctx = new AudioContext({ sampleRate: 16000 })
         audioContextRef.current = ctx
+
+        // Resume AudioContext if suspended (required by some browsers)
+        if (ctx.state === 'suspended') {
+          await ctx.resume()
+        }
 
         await ctx.audioWorklet.addModule('/worklets/pcm-encoder.js')
         const worklet = new AudioWorkletNode(ctx, 'pcm-encoder')

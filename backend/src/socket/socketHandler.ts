@@ -76,10 +76,13 @@ export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
 
     socket.on('disconnect', (reason) => {
       console.log('❌ Client disconnected:', socket.id, reason)
+      // Clean up all listeners on disconnect
+      socket.removeAllListeners()
     })
 
     socket.on('error', (error) => {
       console.error('❌ Socket error:', error)
+      socket.removeAllListeners()
       socket.disconnect(true)
     })
   })

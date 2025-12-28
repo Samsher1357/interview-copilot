@@ -12,7 +12,11 @@ export function useSocketAnalysis() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-    socketRef.current = socketService.getSocket()
+    socketService.getSocket().then(socket => {
+      socketRef.current = socket
+    }).catch(error => {
+      console.error('Failed to get socket:', error)
+    })
   }, [])
 
   const analyzeWithStreaming = useCallback((
@@ -28,6 +32,11 @@ export function useSocketAnalysis() {
     const socket = socketRef.current
     if (!socket) {
       onError('Socket not connected')
+      return
+    }
+
+    if (!socket.connected) {
+      onError('Socket is disconnected')
       return
     }
 
@@ -84,6 +93,11 @@ export function useSocketAnalysis() {
       socket.off('analyze:complete', handleComplete)
       socket.off('analyze:error', handleError)
     }
+
+    // Remove any existing listeners before adding new ones
+    socket.off('analyze:chunk')
+    socket.off('analyze:complete')
+    socket.off('analyze:error')
 
     // Set initial timeout
     timeoutRef.current = setTimeout(() => {
