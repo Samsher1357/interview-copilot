@@ -26,8 +26,11 @@ type Block =
 function parseQA(content: string): { question: string | null; answer: string } {
   if (!content) return { question: null, answer: '' }
 
-  const qMatch = content.match(/(?:💬\s*)?Question:\s*(.+?)(?=\n|$)/i)
-  const aMatch = content.match(/(?:⭐\s*)?Answer:\s*([\s\S]*)/i)
+  const qRegex = /(?:💬\s*)?Question:\s*(.+?)(?=\n|$)/i
+  const aRegex = /(?:⭐\s*)?Answer:\s*([\s\S]*)/i
+  
+  const qMatch = qRegex.exec(content)
+  const aMatch = aRegex.exec(content)
 
   if (!qMatch) {
     return { question: null, answer: content.trim() }
@@ -173,10 +176,11 @@ export function FormattedContent({
       {/* Content */}
       <div className="space-y-2 sm:space-y-3">
         {blocks.map((block, i) => {
+          const blockKey = `block-${i}-${block.type}-${block.content.substring(0, 20)}`
           if (block.type === 'code') {
             return (
               <pre
-                key={i}
+                key={blockKey}
                 className="bg-gray-900 text-gray-100 rounded-md sm:rounded-lg p-3 sm:p-4 my-3 sm:my-4 text-[11px] sm:text-xs md:text-sm overflow-x-auto shadow-lg border border-gray-700"
               >
                 {block.language && (
@@ -192,7 +196,7 @@ export function FormattedContent({
           if (block.type === 'inline-code') {
             return (
               <code
-                key={i}
+                key={blockKey}
                 className="bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 px-1 sm:px-1.5 py-0.5 rounded font-mono text-[11px] sm:text-xs font-semibold"
               >
                 {block.content}
@@ -202,14 +206,15 @@ export function FormattedContent({
 
           // Text block → bullets / paragraphs
           return (
-            <div key={i} className="space-y-1.5 sm:space-y-2">
+            <div key={blockKey} className="space-y-1.5 sm:space-y-2">
               {block.content.split('\n').map((line, idx) => {
                 const t = line.trim()
-                if (!t) return <div key={idx} className="h-1 sm:h-2" />
+                const lineKey = `${blockKey}-line-${idx}-${t.substring(0, 15)}`
+                if (!t) return <div key={lineKey} className="h-1 sm:h-2" />
 
                 if (/^[-•*]\s+/.test(t)) {
                   return (
-                    <div key={idx} className="flex gap-1.5 sm:gap-2 my-1.5 sm:my-2 items-start">
+                    <div key={lineKey} className="flex gap-1.5 sm:gap-2 my-1.5 sm:my-2 items-start">
                       <span className="text-purple-600 dark:text-purple-400 font-bold text-xs sm:text-sm flex-shrink-0 leading-relaxed">•</span>
                       <span className="text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-200 flex-1">
                         {renderHighlights(t.replace(/^[-•*]\s+/, ''))}
@@ -221,7 +226,7 @@ export function FormattedContent({
                 if (/^\d+\.\s+/.test(t)) {
                   const [num, rest] = t.split('.', 2)
                   return (
-                    <div key={idx} className="flex gap-1.5 sm:gap-2 my-1.5 sm:my-2 items-start">
+                    <div key={lineKey} className="flex gap-1.5 sm:gap-2 my-1.5 sm:my-2 items-start">
                       <span className="font-bold text-purple-600 dark:text-purple-400 text-xs sm:text-sm flex-shrink-0 leading-relaxed">{num}.</span>
                       <span className="text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-200 flex-1">
                         {renderHighlights(rest.trim())}
@@ -231,7 +236,7 @@ export function FormattedContent({
                 }
 
                 return (
-                  <p key={idx} className="text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-200 mb-2 sm:mb-3">
+                  <p key={lineKey} className="text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-200 mb-2 sm:mb-3">
                     {renderHighlights(t)}
                   </p>
                 )

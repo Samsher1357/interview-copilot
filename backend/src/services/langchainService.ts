@@ -43,19 +43,17 @@ export class LangChainService {
    */
   async *streamAnalysis(
     transcripts: TranscriptEntry[],
-    language = 'en',
     interviewContext?: InterviewContext,
     simpleEnglish = false,
     aiModel = DEFAULT_MODEL
   ): AsyncGenerator<string> {
     const latest = transcripts.at(-1)
-    if (!latest || latest.speaker !== 'user') return
+    if (!latest?.speaker || latest.speaker !== 'user') return
 
     try {
       const llm = this.getLLM(aiModel)
 
       const systemPrompt = this.buildSystemPrompt({
-        language,
         transcripts,
         interviewContext,
         latestQuestion: latest.text,
@@ -101,7 +99,6 @@ export class LangChainService {
   ====================================================== */
 
   private buildSystemPrompt(opts: {
-    language: string
     transcripts: TranscriptEntry[]
     interviewContext?: InterviewContext
     latestQuestion: string
@@ -110,7 +107,6 @@ export class LangChainService {
     const conversation = this.formatConversation(opts.transcripts)
 
     return buildInterviewSystemPrompt({
-      language: opts.language,
       simpleEnglish: opts.simpleEnglish,
       context: opts.interviewContext,
       conversationHistory: conversation,

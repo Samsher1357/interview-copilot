@@ -18,7 +18,6 @@ import { useInterviewStore } from '@/lib/store'
 import { DeepgramTranscriber } from './DeepgramTranscriber'
 import { useSocketAnalysis } from '@/lib/hooks/useSocketAnalysis'
 import { FormattedContent } from './FormattedContent'
-import { ErrorDisplay } from './ErrorDisplay'
 import { SetupScreen } from './SetupScreen'
 
 export function CleanInterviewUI() {
@@ -27,11 +26,8 @@ export function CleanInterviewUI() {
     transcripts,
     aiResponses,
     isAnalyzing,
-    currentLanguage,
     aiModel,
-    error,
     setIsListening,
-    setError,
     clearTranscripts,
     clearResponses,
     addAIResponse,
@@ -85,7 +81,6 @@ export function CleanInterviewUI() {
   const handleAnalyze = async () => {
     if (!transcripts.length || isAnalyzing || streamingIdRef.current) return
 
-    setError(null)
     cancel()
 
     streamingRef.current = ''
@@ -100,34 +95,34 @@ export function CleanInterviewUI() {
       confidence: 0.9
     })
 
-    analyzeWithStreaming(
-      transcripts.slice(-8),
-      currentLanguage.split('-')[0],
+    analyzeWithStreaming({
+      transcripts: transcripts.slice(-8),
+      language: 'en',
       interviewContext,
       simpleEnglish,
       aiModel,
-      chunk => {
+      onChunk: chunk => {
         streamingRef.current += chunk
         // Directly update the store to reflect streaming text
         useInterviewStore.getState().updateAIResponse(streamingIdRef.current!, {
           content: streamingRef.current
         })
       },
-      responses => {
+      onComplete: responses => {
         if (streamingIdRef.current) {
           useInterviewStore.getState().removeAIResponse(streamingIdRef.current)
         }
         responses.forEach(addAIResponse)
         streamingIdRef.current = null
       },
-      err => {
-        setError(err)
+      onError: err => {
+        console.error('Analysis error:', err)
         if (streamingIdRef.current) {
             useInterviewStore.getState().removeAIResponse(streamingIdRef.current)
         }
         streamingIdRef.current = null
       }
-    )
+    })
   }
 
   const handleEnd = () => {
@@ -248,20 +243,24 @@ export function CleanInterviewUI() {
                     <span className="inline-block w-1 sm:w-1.5 h-4 sm:h-5 ml-1 sm:ml-2 bg-blue-500 animate-pulse align-middle rounded-sm" />
                   )}
                 </div>
-              ) : isGenerating ? (
-                <div className="flex flex-col items-center justify-center py-16 sm:py-20 text-slate-500">
-                  <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 animate-spin mb-3 sm:mb-4 text-blue-500" />
-                  <p className="text-base sm:text-lg font-medium text-slate-700 dark:text-slate-300">Generating response...</p>
-                </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-16 sm:py-20">
-                  <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-800 dark:to-slate-700 rounded-full flex items-center justify-center mb-3 sm:mb-4 shadow-inner">
-                    <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-slate-400 dark:text-slate-500" />
-                  </div>
-                  <p className="text-slate-500 dark:text-slate-400 text-center text-sm sm:text-lg px-4">
-                    Speak into the mic, then tap <span className="text-blue-600 dark:text-blue-400 font-semibold">Analyze</span>
-                  </p>
-                </div>
+                <>
+                  {isGenerating ? (
+                    <div className="flex flex-col items-center justify-center py-16 sm:py-20 text-slate-500">
+                      <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 animate-spin mb-3 sm:mb-4 text-blue-500" />
+                      <p className="text-base sm:text-lg font-medium text-slate-700 dark:text-slate-300">Generating response...</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 sm:py-20">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-800 dark:to-slate-700 rounded-full flex items-center justify-center mb-3 sm:mb-4 shadow-inner">
+                        <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-slate-400 dark:text-slate-500" />
+                      </div>
+                      <p className="text-slate-500 dark:text-slate-400 text-center text-sm sm:text-lg px-4">
+                        Speak into the mic, then tap <span className="text-blue-600 dark:text-blue-400 font-semibold">Analyze</span>
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </section>
@@ -331,7 +330,6 @@ export function CleanInterviewUI() {
       </footer>
 
       <DeepgramTranscriber />
-      <ErrorDisplay error={error} onDismiss={() => setError(null)} />
     </div>
   )
 }

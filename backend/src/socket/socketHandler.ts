@@ -32,14 +32,24 @@ export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
 
   io.on('connection', (socket) => {
     console.log('✅ Client connected:', socket.id)
+    
+    let currentAnalysisAborted = false
 
     // Handle streaming analysis
     socket.on('analyze:stream', async (data) => {
-      const { transcripts, language, interviewContext, simpleEnglish, aiModel } = data
+      const { transcripts, interviewContext, simpleEnglish, aiModel } = data
+      
+      // Reset abort flag for new analysis
+      currentAnalysisAborted = false
 
       try {
         if (!transcripts || !Array.isArray(transcripts) || transcripts.length === 0) {
           socket.emit('analyze:error', { error: 'Invalid transcripts' })
+          return
+        }
+        
+        if (!socket.connected) {
+          console.log('Socket disconnected before analysis started')
           return
         }
 
@@ -48,13 +58,24 @@ export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
 
         for await (const chunk of langchainService.streamAnalysis(
           trimmedTranscripts,
-          language || 'en',
           interviewContext || {},
           simpleEnglish || false,
           aiModel || 'gpt-4o-mini'
         )) {
+          // Check if client disconnected or analysis was aborted
+          if (currentAnalysisAborted || !socket.connected) {
+            console.log('Analysis aborted - client disconnected')
+            return
+          }
+          
           fullResponse += chunk
           socket.emit('analyze:chunk', { chunk })
+        }
+        
+        // Final check before sending complete
+        if (currentAnalysisAborted || !socket.connected) {
+          console.log('Analysis aborted before completion')
+          return
         }
 
         const parsed = {
@@ -69,19 +90,24 @@ export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
         socket.emit('analyze:complete', { result: parsed })
       } catch (error) {
         console.error('Streaming error:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Analysis failed'
-        socket.emit('analyze:error', { error: errorMessage })
+        if (socket.connected && !currentAnalysisAborted) {
+          const errorMessage = error instanceof Error ? error.message : 'Analysis failed'
+          socket.emit('analyze:error', { error: errorMessage })
+        }
       }
     })
 
     socket.on('disconnect', (reason) => {
       console.log('❌ Client disconnected:', socket.id, reason)
+      // Set abort flag to stop any ongoing analysis
+      currentAnalysisAborted = true
       // Clean up all listeners on disconnect
       socket.removeAllListeners()
     })
 
     socket.on('error', (error) => {
       console.error('❌ Socket error:', error)
+      currentAnalysisAborted = true
       socket.removeAllListeners()
       socket.disconnect(true)
     })

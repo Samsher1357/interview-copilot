@@ -32,30 +32,9 @@ router.get(
         return res.status(500).json({ error: 'Deepgram API key not configured' })
       }
 
-      const language = (req.query.language as string) || 'en-US'
-      const model = (req.query.model as string) || 'nova-3'
-      const diarize = req.query.diarize === 'true'
-
-      // Nova 3 optimized for real-time interviews
-      const params = new URLSearchParams({
-        model,
-        language,
-        punctuate: 'true',
-        diarize: String(diarize),
-        smart_format: 'true',
-        interim_results: 'true', // Enable for real-time feedback
-        utterance_end_ms: '1000', // 1 second silence = end of utterance
-        vad_events: 'true', // Voice activity detection
-        filler_words: 'true', // Detect "um", "uh" for interview analysis
-        encoding: 'linear16',
-        sample_rate: '16000',
-        channels: '1',
-      })
-
-      const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`
-
+      // Return API key for SDK initialization on the frontend
+      // The SDK handles connection configuration internally
       res.json({
-        wsUrl,
         apiKey,
       })
     } catch (error: any) {

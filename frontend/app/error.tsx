@@ -5,10 +5,10 @@ import { useEffect } from 'react'
 export default function Error({
   error,
   reset,
-}: {
+}: Readonly<{
   error: Error & { digest?: string }
   reset: () => void
-}) {
+}>) {
   useEffect(() => {
     console.error('Error:', error)
   }, [error])
@@ -45,7 +45,7 @@ export default function Error({
             Try Again
           </button>
           <button
-            onClick={() => window.location.href = '/'}
+            onClick={() => globalThis.location.href = '/'}
             className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors"
           >
             Go Home

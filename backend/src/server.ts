@@ -5,7 +5,7 @@ import { createServer } from 'node:http'
 import cors from 'cors'
 import { initializeSocketIO } from './socket/socketHandler'
 import { setupRoutes } from './routes'
-import { securityHeaders, requestLogger, errorSanitizer } from './middleware/security'
+import { errorHandler } from './middleware/security'
 
 // Validate environment variables before starting
 validateEnvironment()
@@ -15,17 +15,13 @@ const httpServer = createServer(app)
 const PORT = process.env.PORT || 3001
 
 // CORS configuration
-// Support multiple origins for Railway deployment
 const allowedOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
   : ['http://localhost:3000']
 
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true)
-    
-    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
       callback(null, true)
     } else {
       callback(new Error('Not allowed by CORS'))
@@ -42,13 +38,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Request timeout middleware
 app.use((req, res, next) => {
-  // Set timeout for request (30 seconds)
   req.setTimeout(30000, () => {
     console.error('Request timeout:', req.method, req.path)
     res.status(408).json({ error: 'Request timeout' })
   })
   
-  // Set timeout for response (30 seconds)
   res.setTimeout(30000, () => {
     console.error('Response timeout:', req.method, req.path)
     if (!res.headersSent) {
@@ -59,10 +53,6 @@ app.use((req, res, next) => {
   next()
 })
 
-// Security middleware
-app.use(securityHeaders)
-app.use(requestLogger)
-
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
@@ -72,7 +62,7 @@ app.get('/health', (req, res) => {
 setupRoutes(app)
 
 // Error handling middleware (must be last)
-app.use(errorSanitizer)
+app.use(errorHandler)
 
 // Initialize Socket.IO
 const io = initializeSocketIO(httpServer)

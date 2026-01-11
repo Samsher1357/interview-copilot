@@ -7,9 +7,21 @@ import { socketService } from '@/lib/socketService'
 
 const ANALYSIS_TIMEOUT = 30000 // 30 seconds timeout for analysis
 
+interface AnalysisOptions {
+  transcripts: TranscriptEntry[]
+  language: string
+  interviewContext: InterviewContext
+  simpleEnglish: boolean
+  aiModel: string
+  onChunk: (chunk: string) => void
+  onComplete: (responses: AIResponse[]) => void
+  onError: (error: string) => void
+}
+
 export function useSocketAnalysis() {
   const socketRef = useRef<Socket | null>(null)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const activeRequestRef = useRef<boolean>(false)
 
   useEffect(() => {
     socketService.getSocket().then(socket => {
@@ -17,18 +29,24 @@ export function useSocketAnalysis() {
     }).catch(error => {
       console.error('Failed to get socket:', error)
     })
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      activeRequestRef.current = false
+    }
   }, [])
 
-  const analyzeWithStreaming = useCallback((
-    transcripts: TranscriptEntry[],
-    language: string,
-    interviewContext: InterviewContext,
-    simpleEnglish: boolean,
-    aiModel: string,
-    onChunk: (chunk: string) => void,
-    onComplete: (responses: AIResponse[]) => void,
-    onError: (error: string) => void
-  ) => {
+  const analyzeWithStreaming = useCallback((options: AnalysisOptions) => {
+    const {
+      transcripts,
+      language,
+      interviewContext,
+      simpleEnglish,
+      aiModel,
+      onChunk,
+      onComplete,
+      onError
+    } = options
     const socket = socketRef.current
     if (!socket) {
       onError('Socket not connected')
@@ -40,73 +58,55 @@ export function useSocketAnalysis() {
       return
     }
 
+    if (activeRequestRef.current) return
+    activeRequestRef.current = true
+
+    const cleanup = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (socket?.connected) {
+        socket.off('analyze:chunk')
+        socket.off('analyze:complete')
+        socket.off('analyze:error')
+      }
+      activeRequestRef.current = false
+    }
+
     const handleChunk = (data: { chunk: string }) => {
       onChunk(data.chunk)
-      
-      // Reset timeout on each chunk
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
       timeoutRef.current = setTimeout(() => {
-        handleError({ error: 'Analysis timeout - no response from server' })
+        onError('Analysis timeout')
+        cleanup()
       }, ANALYSIS_TIMEOUT)
     }
 
     const handleComplete = (data: { result: any }) => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
+      const responses: AIResponse[] = data.result.answer ? [{
+        id: `answer-${Date.now()}`,
+        type: 'answer',
+        content: data.result.answer,
+        timestamp: Date.now(),
+        confidence: 0.9,
+      }] : []
       
-      const result = data.result
-      const responses: AIResponse[] = []
-      const baseTimestamp = Date.now()
-
-      if (result.answer) {
-        responses.push({
-          id: `answer-${baseTimestamp}`,
-          type: 'answer',
-          content: result.answer,
-          timestamp: baseTimestamp,
-          confidence: 0.9,
-        })
-      }
-
       onComplete(responses)
       cleanup()
     }
 
     const handleError = (data: { error: string }) => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-      
       onError(data.error)
       cleanup()
     }
 
-    const cleanup = () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-        timeoutRef.current = null
-      }
-      socket.off('analyze:chunk', handleChunk)
-      socket.off('analyze:complete', handleComplete)
-      socket.off('analyze:error', handleError)
-    }
-
-    // Remove any existing listeners before adding new ones
     socket.off('analyze:chunk')
     socket.off('analyze:complete')
     socket.off('analyze:error')
 
-    // Set initial timeout
-    timeoutRef.current = setTimeout(() => {
-      handleError({ error: 'Analysis timeout - no response from server' })
-    }, ANALYSIS_TIMEOUT)
-
     socket.on('analyze:chunk', handleChunk)
     socket.on('analyze:complete', handleComplete)
     socket.on('analyze:error', handleError)
+
+    timeoutRef.current = setTimeout(() => handleError({ error: 'Analysis timeout' }), ANALYSIS_TIMEOUT)
 
     socket.emit('analyze:stream', {
       transcripts,
@@ -118,19 +118,11 @@ export function useSocketAnalysis() {
   }, [])
 
   const cancel = useCallback(() => {
-    const socket = socketRef.current
-    if (!socket) return
-    
-    // Clear timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-      timeoutRef.current = null
-    }
-    
-    // Remove all listeners for this analysis
-    socket.off('analyze:chunk')
-    socket.off('analyze:complete')
-    socket.off('analyze:error')
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    socketRef.current?.off('analyze:chunk')
+    socketRef.current?.off('analyze:complete')
+    socketRef.current?.off('analyze:error')
+    activeRequestRef.current = false
   }, [])
 
   return { analyzeWithStreaming, cancel }

@@ -10,20 +10,27 @@ import { isNoise } from '@/lib/utils/textFilters'
    CONSTANTS
 ====================================================== */
 
-const MAX_TRANSCRIPTS_FOR_ANALYSIS = 8
 const MIN_ANALYSIS_INTERVAL = 500
-const STREAM_BUFFER_DESKTOP = 100
-const STREAM_BUFFER_MOBILE = 150
 
 /* ======================================================
    COMPONENT
+   
+   VAD-BASED AUTO-TRIGGERING WITH INCREMENTAL ANALYSIS:
+   1. useDeepgram detects speech via SpeechStarted event (isSpeaking = true)
+   2. User speaks and Deepgram buffers transcript internally
+   3. After 1.5s silence, UtteranceEnd event fires (isSpeaking = false)
+   4. useDeepgram flushes complete utterance via handleTranscript callback
+   5. VAD useEffect detects isSpeaking transition (true → false)
+   6. Analysis is auto-triggered 500ms after speech ends
+   7. Only UNANALYZED transcripts + interview context sent to AI
+   8. Tracks analyzed vs unanalyzed to avoid reprocessing
+   9. Handles multiple rapid transcripts and failed analyses gracefully
 ====================================================== */
 
 export function DeepgramTranscriber() {
   const store = useInterviewStore()
   const {
     isListening,
-    currentLanguage,
     simpleEnglish,
     aiModel,
     addTranscript,
@@ -31,7 +38,7 @@ export function DeepgramTranscriber() {
     setError,
   } = store
 
-  const { connect, disconnect, isConnected, error: deepgramError, interimTranscript } = useDeepgram()
+  const { connect, disconnect, isConnected, error: deepgramError, interimTranscript, isSpeaking } = useDeepgram()
   const { analyzeWithStreaming, cancel: cancelStreaming } = useSocketAnalysis()
 
   /* ======================================================
@@ -41,31 +48,27 @@ export function DeepgramTranscriber() {
   const mountedRef = useRef(true)
   const lastAnalysisAtRef = useRef(0)
   const analysisTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isRunningAnalysisRef = useRef(false)
+  const lastSpeakingStateRef = useRef(false)
+  const lastAnalyzedIndexRef = useRef(-1) // Track last analyzed transcript index
 
   const streamingTextRef = useRef('')
   const streamingIdRef = useRef<string | null>(null)
 
-  const langRef = useRef(currentLanguage)
   const simpleRef = useRef(simpleEnglish)
   const modelRef = useRef(aiModel)
 
   // Transcript buffer
-  const transcriptBufferRef = useRef<{
-    speaker: 'user'
-    text: string
-    timestamp: number
-    timeout: NodeJS.Timeout | null
-  } | null>(null)
+  // Removed - using VAD-based utterance completion from useDeepgram instead
 
   /* ======================================================
      REF SYNC
   ====================================================== */
 
   useEffect(() => {
-    langRef.current = currentLanguage
     simpleRef.current = simpleEnglish
     modelRef.current = aiModel
-  }, [currentLanguage, simpleEnglish, aiModel])
+  }, [simpleEnglish, aiModel])
 
   useEffect(() => {
     if (deepgramError) setError(deepgramError)
@@ -75,83 +78,84 @@ export function DeepgramTranscriber() {
      UTILITIES
   ====================================================== */
 
-  const commitTranscriptBuffer = () => {
-    const buffer = transcriptBufferRef.current
-    if (!buffer) return
+  const commitTranscript = (entry: TranscriptEntry) => {
+    if (isNoise(entry.text)) return
 
     addTranscript({
-      id: `transcript-${Date.now()}-${Math.random()}`,
-      speaker: buffer.speaker,
-      text: buffer.text.trim(),
-      timestamp: buffer.timestamp,
+      id: entry.id,
+      speaker: entry.speaker,
+      text: entry.text.trim(),
+      timestamp: entry.timestamp,
     })
-
-    transcriptBufferRef.current = null
-    triggerAnalysis()
   }
+
+  /* ======================================================
+     VAD EVENT HANDLER - Auto-trigger on speech end
+  ====================================================== */
+
+  useEffect(() => {
+    // Trigger analysis when user stops speaking
+    if (lastSpeakingStateRef.current && !isSpeaking && isListening) {
+      if (analysisTimeoutRef.current) clearTimeout(analysisTimeoutRef.current)
+      analysisTimeoutRef.current = setTimeout(triggerAnalysis, 500)
+    }
+    lastSpeakingStateRef.current = isSpeaking
+  }, [isSpeaking, isListening])
 
   /* ======================================================
      AI ANALYSIS TRIGGER (THROTTLED)
   ====================================================== */
 
   const triggerAnalysis = () => {
-    if (!mountedRef.current) return
-    if (!useInterviewStore.getState().isListening) return
-
+    if (isRunningAnalysisRef.current || !mountedRef.current) return
+    
     const now = Date.now()
-    const delta = now - lastAnalysisAtRef.current
+    if (now - lastAnalysisAtRef.current < MIN_ANALYSIS_INTERVAL) return
+    
+    lastAnalysisAtRef.current = now
+    cancelStreaming()
+    runAnalysis()
+  }
 
-    if (delta < MIN_ANALYSIS_INTERVAL) {
-      clearTimeout(analysisTimeoutRef.current!)
-      analysisTimeoutRef.current = setTimeout(
-        triggerAnalysis,
-        MIN_ANALYSIS_INTERVAL - delta
-      )
+  const runAnalysis = () => {
+    const state = useInterviewStore.getState()
+    if (!state.isListening || isRunningAnalysisRef.current) return
+
+    const unanalyzedTranscripts = state.transcripts
+      .slice(lastAnalyzedIndexRef.current + 1)
+      .filter(t => !isNoise(t.text))
+    
+    if (unanalyzedTranscripts.length === 0) {
+      lastAnalyzedIndexRef.current = state.transcripts.length - 1
       return
     }
 
-    lastAnalysisAtRef.current = now
-    cancelStreaming()
-
-    analysisTimeoutRef.current = setTimeout(runAnalysis, 0)
-  }
-
-  const runAnalysis = async () => {
-    const state = useInterviewStore.getState()
-    if (!state.isListening || !mountedRef.current) return
-
-    const transcripts = state.transcripts.slice(-MAX_TRANSCRIPTS_FOR_ANALYSIS)
-    const last = transcripts.at(-1)
-    if (!last || isNoise(last.text)) return
-
+    isRunningAnalysisRef.current = true
     streamingTextRef.current = ''
     streamingIdRef.current = null
+    state.setIsAnalyzing(true)
+    state.setError(null)
 
-    try {
-      state.setIsAnalyzing(true)
-      state.setError(null)
-
-      analyzeWithStreaming(
-        transcripts,
-        langRef.current.split('-')[0],
-        state.interviewContext,
-        simpleRef.current,
-        modelRef.current,
-        onStreamChunk,
-        onStreamComplete,
-        onStreamError
-      )
-    } catch (e: any) {
-      onStreamError(e?.message)
-    }
+    analyzeWithStreaming({
+      transcripts: unanalyzedTranscripts,
+      language: 'en',
+      interviewContext: state.interviewContext,
+      simpleEnglish: simpleRef.current,
+      aiModel: modelRef.current,
+      onChunk: onStreamChunk,
+      onComplete: onStreamComplete,
+      onError: onStreamError
+    })
   }
 
   const onStreamChunk = (chunk: string) => {
-    if (!mountedRef.current || !useInterviewStore.getState().isListening) return
-
     streamingTextRef.current += chunk
 
-    if (!streamingIdRef.current) {
+    if (streamingIdRef.current) {
+      useInterviewStore.getState().updateAIResponse(streamingIdRef.current, {
+        content: streamingTextRef.current,
+      })
+    } else {
       streamingIdRef.current = `ai-stream-${Date.now()}`
       addAIResponse({
         id: streamingIdRef.current,
@@ -160,12 +164,6 @@ export function DeepgramTranscriber() {
         timestamp: Date.now(),
         confidence: 0.9,
       })
-    } else {
-      useInterviewStore
-        .getState()
-        .updateAIResponse(streamingIdRef.current, {
-          content: streamingTextRef.current,
-        })
     }
   }
 
@@ -176,12 +174,18 @@ export function DeepgramTranscriber() {
     }
 
     responses.forEach(addAIResponse)
-    useInterviewStore.getState().setIsAnalyzing(false)
+    lastAnalyzedIndexRef.current = useInterviewStore.getState().transcripts.length - 1
+    
+    const state = useInterviewStore.getState()
+    state.setIsAnalyzing(false)
+    isRunningAnalysisRef.current = false
   }
 
   const onStreamError = (msg?: string) => {
-    useInterviewStore.getState().setError(msg || 'AI analysis failed')
-    useInterviewStore.getState().setIsAnalyzing(false)
+    const state = useInterviewStore.getState()
+    state.setError(msg || 'AI analysis failed')
+    state.setIsAnalyzing(false)
+    isRunningAnalysisRef.current = false
   }
 
   /* ======================================================
@@ -189,38 +193,7 @@ export function DeepgramTranscriber() {
   ====================================================== */
 
   const handleTranscript = (entry: TranscriptEntry) => {
-    if (isNoise(entry.text)) return
-
-    const now = Date.now()
-    const isMobile =
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-      window.innerWidth < 768
-
-    const timeoutMs = isMobile
-      ? STREAM_BUFFER_MOBILE
-      : STREAM_BUFFER_DESKTOP
-
-    const speaker = 'user'
-    const buffer = transcriptBufferRef.current
-
-    if (buffer?.speaker === speaker) {
-      // Clear existing timeout
-      if (buffer.timeout) {
-        clearTimeout(buffer.timeout)
-      }
-      
-      buffer.text += ' ' + entry.text.trim()
-      buffer.timeout = setTimeout(commitTranscriptBuffer, timeoutMs)
-    } else {
-      if (buffer) commitTranscriptBuffer()
-      
-      transcriptBufferRef.current = {
-        speaker,
-        text: entry.text.trim(),
-        timestamp: now,
-        timeout: setTimeout(commitTranscriptBuffer, timeoutMs),
-      }
-    }
+    commitTranscript(entry)
   }
 
   /* ======================================================
@@ -231,32 +204,24 @@ export function DeepgramTranscriber() {
     mountedRef.current = true
 
     if (isListening) {
-      connect(langRef.current || 'en-US', handleTranscript)
+      lastAnalyzedIndexRef.current = -1
+      lastAnalysisAtRef.current = 0
+      connect(handleTranscript)
     } else {
+      if (analysisTimeoutRef.current) clearTimeout(analysisTimeoutRef.current)
       cancelStreaming()
       disconnect()
-
       if (streamingIdRef.current) {
         useInterviewStore.getState().removeAIResponse(streamingIdRef.current)
-        streamingIdRef.current = null
       }
-
-      if (transcriptBufferRef.current) {
-        clearTimeout(transcriptBufferRef.current.timeout!)
-        commitTranscriptBuffer()
-      }
-
-      useInterviewStore.getState().setIsAnalyzing(false)
-      useInterviewStore.getState().setError(null)
     }
 
     return () => {
       mountedRef.current = false
-      clearTimeout(analysisTimeoutRef.current!)
-      clearTimeout(transcriptBufferRef.current?.timeout!)
+      if (analysisTimeoutRef.current) clearTimeout(analysisTimeoutRef.current)
       cancelStreaming()
     }
-  }, [isListening, connect, disconnect])
+  }, [isListening, connect, disconnect, cancelStreaming])
 
   /* ======================================================
      UI
@@ -274,13 +239,34 @@ export function DeepgramTranscriber() {
     )
   }
 
-  // Show interim transcript in real-time
+  // Show interim transcript in real-time with voice activity indicator
   if (interimTranscript) {
     return (
       <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 mt-4">
-        <p className="text-gray-600 dark:text-gray-400 text-sm italic">
-          🎤 {interimTranscript}
-        </p>
+        <div className="flex items-start gap-2">
+          {isSpeaking && (
+            <div className="flex-shrink-0 mt-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            </div>
+          )}
+          <p className="text-gray-600 dark:text-gray-400 text-sm italic flex-1">
+            🎤 {interimTranscript}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show listening indicator when connected but no speech yet
+  if (isConnected) {
+    return (
+      <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3 mt-4">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+          <p className="text-green-700 dark:text-green-300 text-xs">
+            {isSpeaking ? 'Listening - Speech detected' : 'Listening - Ready for speech'}
+          </p>
+        </div>
       </div>
     )
   }

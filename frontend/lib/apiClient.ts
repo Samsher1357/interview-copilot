@@ -19,21 +19,21 @@ export interface InterviewContext {
 }
 
 class APIClient {
-  private baseUrl: string
+  private readonly baseUrl: string
 
   constructor() {
     this.baseUrl = API_BASE_URL
   }
 
   /**
-   * Get Deepgram connection details
+   * Get Deepgram API key for SDK initialization
    */
-  async getDeepgramConnection(): Promise<{ apiKey: string; url: string }> {
+  async getDeepgramConnection(): Promise<{ apiKey: string }> {
     return retryWithBackoff(async () => {
       const response = await fetch(`${this.baseUrl}/api/deepgram`, { method: 'GET' })
       
       if (!response.ok) {
-        throw new Error(`Failed to get Deepgram connection: ${response.status}`)
+        throw new Error(`Failed to get Deepgram API key: ${response.status}`)
       }
       
       return response.json()

@@ -66,7 +66,7 @@ interface InterviewState {
 // Helper to safely access localStorage
 const getLocalStorage = () => {
   try {
-    return typeof window !== 'undefined' ? window.localStorage : undefined
+    return globalThis.window === undefined ? undefined : globalThis.window.localStorage
   } catch {
     return undefined
   }
@@ -94,7 +94,7 @@ export const useInterviewStore = create<InterviewState>()(
   addTranscript: (entry) => {
     const state = get()
     let transcripts = [...state.transcripts]
-    const lastTranscript = transcripts[transcripts.length - 1]
+    const lastTranscript = transcripts.at(-1)
     
     // Merge transcripts from same speaker within 1 second
     if (lastTranscript && 

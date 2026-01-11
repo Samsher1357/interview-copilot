@@ -8,7 +8,6 @@ import { InterviewContext } from '../types'
  */
 
 export interface PromptOptions {
-  language: string
   simpleEnglish?: boolean
   context?: InterviewContext
   conversationHistory?: string
@@ -20,7 +19,6 @@ export interface PromptOptions {
  */
 export function buildInterviewSystemPrompt(options: PromptOptions): string {
   const {
-    language,
     simpleEnglish = false,
     context,
     conversationHistory,
