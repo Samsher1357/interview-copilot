@@ -137,6 +137,7 @@ export function CleanInterviewUI() {
     clearResponses()
     clearTranscripts()
     streamingIdRef.current = null
+    useInterviewStore.getState().setInterviewStarted(false)
     setShowSetup(true)
   }
 

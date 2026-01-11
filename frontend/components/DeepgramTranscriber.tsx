@@ -23,6 +23,7 @@ export function DeepgramTranscriber() {
   const store = useInterviewStore()
   const {
     isListening,
+    isInterviewStarted,
     currentLanguage,
     simpleEnglish,
     aiModel,
@@ -31,7 +32,7 @@ export function DeepgramTranscriber() {
     setError,
   } = store
 
-  const { connect, disconnect, isConnected, error: deepgramError, interimTranscript } = useDeepgram()
+  const { connect, disconnect, startMicrophone, stopMicrophone, isConnected, isMicActive, error: deepgramError, interimTranscript } = useDeepgram()
   const { analyzeWithStreaming, cancel: cancelStreaming } = useSocketAnalysis()
 
   /* ======================================================
@@ -224,15 +225,17 @@ export function DeepgramTranscriber() {
   }
 
   /* ======================================================
-     START / STOP LISTENING
+     START / STOP CONNECTION (BASED ON INTERVIEW STARTED)
   ====================================================== */
 
   useEffect(() => {
     mountedRef.current = true
 
-    if (isListening) {
+    if (isInterviewStarted) {
+      // Connect to Deepgram when interview starts
       connect(langRef.current || 'en-US', handleTranscript)
     } else {
+      // Disconnect when interview ends
       cancelStreaming()
       disconnect()
 
@@ -256,13 +259,27 @@ export function DeepgramTranscriber() {
       clearTimeout(transcriptBufferRef.current?.timeout!)
       cancelStreaming()
     }
-  }, [isListening, connect, disconnect])
+  }, [isInterviewStarted, connect, disconnect])
+
+  /* ======================================================
+     START / STOP MICROPHONE (BASED ON LISTENING STATE)
+  ====================================================== */
+
+  useEffect(() => {
+    if (!isInterviewStarted || !isConnected) return
+
+    if (isListening) {
+      startMicrophone()
+    } else {
+      stopMicrophone()
+    }
+  }, [isListening, isInterviewStarted, isConnected, startMicrophone, stopMicrophone])
 
   /* ======================================================
      UI
   ====================================================== */
 
-  if (!isListening) return null
+  if (!isInterviewStarted) return null
 
   if (!isConnected && !deepgramError) {
     return (
@@ -274,8 +291,8 @@ export function DeepgramTranscriber() {
     )
   }
 
-  // Show interim transcript in real-time
-  if (interimTranscript) {
+  // Show interim transcript in real-time only when listening
+  if (isListening && interimTranscript) {
     return (
       <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 mt-4">
         <p className="text-gray-600 dark:text-gray-400 text-sm italic">

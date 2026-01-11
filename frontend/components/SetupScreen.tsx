@@ -19,7 +19,8 @@ export function SetupScreen({ onStart }: Readonly<SetupScreenProps>) {
     simpleEnglish,
     setSimpleEnglish,
     aiModel,
-    setAiModel
+    setAiModel,
+    setInterviewStarted
   } = useInterviewStore()
   
   const [formData, setFormData] = useState<InterviewContext>({
@@ -167,6 +168,8 @@ export function SetupScreen({ onStart }: Readonly<SetupScreenProps>) {
     const skills = skillsInput.split(',').map(s => s.trim()).filter(s => s.length > 0)
     const updatedContext = { ...formData, skills }
     setInterviewContext(updatedContext)
+    // Set interview as started (this will trigger Deepgram connection)
+    setInterviewStarted(true)
     onStart()
   }
 

@@ -11,19 +11,21 @@ export function useDeepgram() {
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [interimTranscript, setInterimTranscript] = useState<string>('')
+  const [isMicActive, setIsMicActive] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const workletNodeRef = useRef<AudioWorkletNode | null>(null)
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const reconnectAttemptsRef = useRef(0)
   const connectingRef = useRef(false)
   const shouldReconnectRef = useRef(true)
 
   const transcriptBufferRef = useRef('')
 
-  const cleanup = () => {
-    // PRIORITY 1: Stop microphone immediately (this removes browser mic indicator)
+  const cleanupMicrophone = () => {
+    // Stop microphone
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => {
         track.stop()
@@ -31,27 +33,27 @@ export function useDeepgram() {
       mediaStreamRef.current = null
     }
 
-    // PRIORITY 2: Close WebSocket to stop data flow
-    if (wsRef.current) {
-      // Use standard close code without reason string for better compatibility
-      wsRef.current.close(1000)
-      wsRef.current = null
+    // Disconnect audio processing
+    if (sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current.disconnect()
+        sourceNodeRef.current = null
+      } catch (error) {
+        sourceNodeRef.current = null
+      }
     }
 
-    // PRIORITY 3: Disconnect audio processing
     if (workletNodeRef.current) {
       try {
         workletNodeRef.current.disconnect()
         workletNodeRef.current = null
       } catch (error) {
-        // Worklet might already be disconnected
         workletNodeRef.current = null
       }
     }
 
-    // PRIORITY 4: Close audio context
+    // Close audio context
     if (audioContextRef.current) {
-      // Try synchronous close first for immediate effect
       if (audioContextRef.current.state !== 'closed') {
         try {
           audioContextRef.current.close().catch(() => {})
@@ -60,6 +62,17 @@ export function useDeepgram() {
         }
       }
       audioContextRef.current = null
+    }
+  }
+
+  const cleanup = () => {
+    // Stop microphone
+    cleanupMicrophone()
+
+    // Close WebSocket
+    if (wsRef.current) {
+      wsRef.current.close(1000)
+      wsRef.current = null
     }
 
     // Clear buffer states
@@ -73,7 +86,59 @@ export function useDeepgram() {
     
     cleanup()
     setIsConnected(false)
+    setIsMicActive(false)
     setError(null)
+    setInterimTranscript('')
+  }, [])
+
+  const startMicrophone = useCallback(async () => {
+    if (isMicActive || !isConnected) return
+    
+    try {
+      // Get microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true },
+      })
+      mediaStreamRef.current = stream
+
+      // Create audio context if not exists
+      if (!audioContextRef.current) {
+        const ctx = new AudioContext({ sampleRate: 16000 })
+        audioContextRef.current = ctx
+        
+        if (ctx.state === 'suspended') {
+          await ctx.resume()
+        }
+        
+        await ctx.audioWorklet.addModule('/worklets/pcm-encoder.js')
+      }
+
+      const ctx = audioContextRef.current
+      const worklet = new AudioWorkletNode(ctx, 'pcm-encoder')
+      const source = ctx.createMediaStreamSource(stream)
+      source.connect(worklet)
+      
+      workletNodeRef.current = worklet
+      sourceNodeRef.current = source
+
+      // Send audio data to WebSocket
+      worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(e.data)
+        }
+      }
+
+      setIsMicActive(true)
+      setError(null)
+    } catch (err: any) {
+      setError(err.message || 'Failed to start microphone')
+      cleanupMicrophone()
+    }
+  }, [isMicActive, isConnected])
+
+  const stopMicrophone = useCallback(() => {
+    cleanupMicrophone()
+    setIsMicActive(false)
     setInterimTranscript('')
   }, [])
 
@@ -111,28 +176,7 @@ export function useDeepgram() {
           }
         )
 
-        // mic
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true },
-        })
-        mediaStreamRef.current = stream
-
-        // audio ctx
-        const ctx = new AudioContext({ sampleRate: 16000 })
-        audioContextRef.current = ctx
-
-        // Resume AudioContext if suspended (required by some browsers)
-        if (ctx.state === 'suspended') {
-          await ctx.resume()
-        }
-
-        await ctx.audioWorklet.addModule('/worklets/pcm-encoder.js')
-        const worklet = new AudioWorkletNode(ctx, 'pcm-encoder')
-        const source = ctx.createMediaStreamSource(stream)
-        source.connect(worklet)
-        workletNodeRef.current = worklet
-
-        // ws
+        // Create WebSocket connection
         const ws = new WebSocket(wsUrl, ['token', apiKey])
         wsRef.current = ws
 
@@ -141,10 +185,6 @@ export function useDeepgram() {
           setError(null)
           reconnectAttemptsRef.current = 0
           connectingRef.current = false
-        }
-
-        worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-          if (ws.readyState === WebSocket.OPEN) ws.send(e.data)
         }
 
         const flushTranscript = () => {
@@ -240,5 +280,14 @@ export function useDeepgram() {
 
   useEffect(() => disconnect, [disconnect])
 
-  return { connect, disconnect, isConnected, error, interimTranscript }
+  return { 
+    connect, 
+    disconnect, 
+    startMicrophone, 
+    stopMicrophone, 
+    isConnected, 
+    isMicActive, 
+    error, 
+    interimTranscript 
+  }
 }

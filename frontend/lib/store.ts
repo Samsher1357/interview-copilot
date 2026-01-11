@@ -31,8 +31,9 @@ export interface InterviewContext {
 const MAX_TRANSCRIPTS = 100
 const MAX_AI_RESPONSES = 50
 
-interface InterviewState {
+export interface InterviewState {
   isListening: boolean
+  isInterviewStarted: boolean
   transcripts: TranscriptEntry[]
   aiResponses: AIResponse[]
   currentLanguage: string
@@ -45,6 +46,7 @@ interface InterviewState {
   toasts: ToastMessage[]
   
   setIsListening: (isListening: boolean) => void
+  setInterviewStarted: (started: boolean) => void
   addTranscript: (entry: TranscriptEntry) => void
   addAIResponse: (response: AIResponse) => void
   updateAIResponse: (id: string, updates: Partial<AIResponse>) => void
@@ -76,6 +78,7 @@ export const useInterviewStore = create<InterviewState>()(
   persist(
     (set, get) => ({
       isListening: false,
+      isInterviewStarted: false,
       transcripts: [],
       aiResponses: [],
       currentLanguage: 'en-US',
@@ -91,6 +94,7 @@ export const useInterviewStore = create<InterviewState>()(
     isListening,
     sessionStartTime: isListening && !state.sessionStartTime ? Date.now() : state.sessionStartTime
   })),
+  setInterviewStarted: (started) => set({ isInterviewStarted: started }),
   addTranscript: (entry) => {
     const state = get()
     let transcripts = [...state.transcripts]
@@ -149,6 +153,7 @@ export const useInterviewStore = create<InterviewState>()(
     aiResponses: [],
     sessionStartTime: null,
     isListening: false,
+    isInterviewStarted: false,
     error: null,
   }),
   addToast: (toast) => set((state) => ({
