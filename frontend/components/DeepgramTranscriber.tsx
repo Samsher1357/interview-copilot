@@ -97,7 +97,7 @@ export function DeepgramTranscriber() {
 
   const triggerAnalysis = () => {
     if (!mountedRef.current) return
-    if (!useInterviewStore.getState().isListening) return
+    if (!useInterviewStore.getState().isInterviewStarted) return
 
     const now = Date.now()
     const delta = now - lastAnalysisAtRef.current
@@ -119,7 +119,7 @@ export function DeepgramTranscriber() {
 
   const runAnalysis = async () => {
     const state = useInterviewStore.getState()
-    if (!state.isListening || !mountedRef.current) return
+    if (!state.isInterviewStarted || !mountedRef.current) return
 
     const transcripts = state.transcripts.slice(-MAX_TRANSCRIPTS_FOR_ANALYSIS)
     const last = transcripts.at(-1)
@@ -148,7 +148,7 @@ export function DeepgramTranscriber() {
   }
 
   const onStreamChunk = (chunk: string) => {
-    if (!mountedRef.current || !useInterviewStore.getState().isListening) return
+    if (!mountedRef.current || !useInterviewStore.getState().isInterviewStarted) return
 
     streamingTextRef.current += chunk
 
