@@ -96,6 +96,11 @@ httpServer.listen(PORT, () => {
 const shutdown = async () => {
   console.log('\n🔄 Shutting down gracefully...')
   
+  // Destroy rate limiter cleanup interval
+  const { rateLimiter } = await import('./middleware/rateLimiter.js')
+  rateLimiter.destroy()
+  console.log('✅ Rate limiter destroyed')
+  
   // Close HTTP server
   httpServer.close(() => {
     console.log('✅ HTTP server closed')

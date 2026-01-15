@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client'
 class SocketService {
   private socket: Socket | null = null
   private socketPromise: Promise<Socket> | null = null
+  private shouldReconnect: boolean = true
 
   async getSocket(): Promise<Socket> {
     // Return existing connected socket
@@ -32,6 +33,9 @@ class SocketService {
     return new Promise((resolve, reject) => {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
       
+      // Reset reconnection flag when creating new socket
+      this.shouldReconnect = true
+      
       const socket = io(apiUrl, {
         transports: ['websocket', 'polling'],
         reconnection: true,
@@ -54,6 +58,11 @@ class SocketService {
 
       socket.on('disconnect', (reason) => {
         console.log('❌ Socket disconnected:', reason)
+        
+        // Prevent reconnection if explicitly disconnected
+        if (!this.shouldReconnect && socket.io.opts.reconnection) {
+          socket.io.opts.reconnection = false
+        }
       })
 
       socket.on('connect_error', (error) => {
@@ -65,11 +74,23 @@ class SocketService {
   }
 
   disconnect() {
+    // Disable reconnection before disconnecting
+    this.shouldReconnect = false
+    
     if (this.socket) {
+      // Disable reconnection on the socket instance
+      this.socket.io.opts.reconnection = false
       this.socket.disconnect()
       this.socket = null
     }
     this.socketPromise = null
+  }
+  
+  enableReconnection() {
+    this.shouldReconnect = true
+    if (this.socket) {
+      this.socket.io.opts.reconnection = true
+    }
   }
 }
 

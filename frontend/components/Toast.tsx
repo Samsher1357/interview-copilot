@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, memo } from 'react'
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
@@ -18,7 +18,7 @@ interface ToastProps {
   onDismiss: (id: string) => void
 }
 
-function Toast({ toast, onDismiss }: Readonly<ToastProps>) {
+const Toast = memo(function Toast({ toast, onDismiss }: Readonly<ToastProps>) {
   const [isExiting, setIsExiting] = useState(false)
 
   useEffect(() => {
@@ -90,7 +90,7 @@ function Toast({ toast, onDismiss }: Readonly<ToastProps>) {
       </div>
     </div>
   )
-}
+})
 
 interface ToastContainerProps {
   toasts: ToastMessage[]

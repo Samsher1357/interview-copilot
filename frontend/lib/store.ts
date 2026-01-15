@@ -1,71 +1,58 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ToastMessage } from '@/components/Toast'
+import { Utterance, Turn, ConversationState, InterviewContext } from './types'
 
-export interface TranscriptEntry {
-  id: string
-  speaker: 'user' | 'system'
-  text: string
-  timestamp: number
-}
+const MAX_TURNS = 10
+const MAX_UTTERANCES = 50
 
-export interface AIResponse {
-  id: string
-  type: 'suggestion' | 'hint' | 'talking-point' | 'answer'
-  content: string
-  timestamp: number
-  confidence?: number
-}
-
-export interface InterviewContext {
-  jobRole?: string
-  company?: string
-  skills?: string[]
-  experience?: string
-  education?: string
-  achievements?: string
-  customNotes?: string
-}
-
-// Memory management constants
-const MAX_TRANSCRIPTS = 100
-const MAX_AI_RESPONSES = 50
-
-export interface InterviewState {
-  isListening: boolean
-  isInterviewStarted: boolean
-  transcripts: TranscriptEntry[]
-  aiResponses: AIResponse[]
+export interface CopilotState {
+  // Conversation FSM
+  conversationState: ConversationState
+  
+  // Turn-based memory
+  turns: Turn[]
+  utterances: Utterance[]
+  
+  // Current streaming AI response
+  streamingResponse: string | null
+  streamingId: string | null
+  
+  // Settings
   currentLanguage: string
   simpleEnglish: boolean
   aiModel: string
-  error: string | null
-  isAnalyzing: boolean
   interviewContext: InterviewContext
+  
+  // UI state
+  error: string | null
+  isInterviewStarted: boolean
   sessionStartTime: number | null
   toasts: ToastMessage[]
   
-  setIsListening: (isListening: boolean) => void
-  setInterviewStarted: (started: boolean) => void
-  addTranscript: (entry: TranscriptEntry) => void
-  addAIResponse: (response: AIResponse) => void
-  updateAIResponse: (id: string, updates: Partial<AIResponse>) => void
-  removeAIResponse: (id: string) => void
+  // Actions
+  setConversationState: (state: ConversationState) => void
+  addUtterance: (utterance: Utterance) => void
+  addTurn: (turn: Turn) => void
+  setStreamingResponse: (text: string | null, id?: string | null) => void
+  appendStreamingChunk: (chunk: string) => void
+  commitStreamingToTurn: () => void
+  cancelStreaming: () => void
+  
   setLanguage: (lang: string) => void
   setSimpleEnglish: (enabled: boolean) => void
   setAiModel: (model: string) => void
-  setError: (error: string | null) => void
-  setIsAnalyzing: (isAnalyzing: boolean) => void
   setInterviewContext: (context: InterviewContext) => void
-  clearTranscripts: () => void
-  clearResponses: () => void
-  clearAll: () => void
+  setError: (error: string | null) => void
+  setInterviewStarted: (started: boolean) => void
+  
+  clearSession: () => void
+  reset: () => void
+  
   addToast: (toast: Omit<ToastMessage, 'id'>) => void
   removeToast: (id: string) => void
-  showToast: (type: ToastMessage['type'], message: string, description?: string) => void
 }
 
-// Helper to safely access localStorage
 const getLocalStorage = () => {
   try {
     return typeof window !== 'undefined' ? window.localStorage : undefined
@@ -74,116 +61,148 @@ const getLocalStorage = () => {
   }
 }
 
-export const useInterviewStore = create<InterviewState>()(
+const createThrottledStorage = () => {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+  }
+
+  let throttleTimer: NodeJS.Timeout | null = null
+  let pendingData: { key: string; value: string } | null = null
+
+  return {
+    getItem: (key: string) => storage.getItem(key),
+    setItem: (key: string, value: string) => {
+      pendingData = { key, value }
+      if (throttleTimer) clearTimeout(throttleTimer)
+      throttleTimer = setTimeout(() => {
+        if (pendingData) {
+          storage.setItem(pendingData.key, pendingData.value)
+          pendingData = null
+        }
+        throttleTimer = null
+      }, 500)
+    },
+    removeItem: (key: string) => storage.removeItem(key),
+  }
+}
+
+export const useCopilotStore = create<CopilotState>()(
   persist(
     (set, get) => ({
-      isListening: false,
-      isInterviewStarted: false,
-      transcripts: [],
-      aiResponses: [],
+      conversationState: 'IDLE',
+      turns: [],
+      utterances: [],
+      streamingResponse: null,
+      streamingId: null,
       currentLanguage: 'en-US',
       simpleEnglish: false,
       aiModel: 'gpt-4o-mini',
-      error: null,
-      isAnalyzing: false,
       interviewContext: {},
+      error: null,
+      isInterviewStarted: false,
       sessionStartTime: null,
       toasts: [],
-  
-  setIsListening: (isListening) => set((state) => ({
-    isListening,
-    sessionStartTime: isListening && !state.sessionStartTime ? Date.now() : state.sessionStartTime
-  })),
-  setInterviewStarted: (started) => set({ isInterviewStarted: started }),
-  addTranscript: (entry) => {
-    const state = get()
-    let transcripts = [...state.transcripts]
-    const lastTranscript = transcripts[transcripts.length - 1]
-    
-    // Merge transcripts from same speaker within 1 second
-    if (lastTranscript && 
-        lastTranscript.speaker === entry.speaker &&
-        entry.timestamp - lastTranscript.timestamp < 1000) {
-      const merged: TranscriptEntry = {
-        id: lastTranscript.id,
-        speaker: lastTranscript.speaker,
-        text: `${lastTranscript.text} ${entry.text}`.trim(),
-        timestamp: lastTranscript.timestamp,
-      }
-      transcripts[transcripts.length - 1] = merged
-    } else {
-      transcripts.push(entry)
-    }
-    
-    // Auto-cleanup if exceeding limit
-    if (transcripts.length > MAX_TRANSCRIPTS) {
-      transcripts = transcripts.slice(-MAX_TRANSCRIPTS)
-    }
-    
-    set({ transcripts })
-  },
-  addAIResponse: (response) => set((state) => {
-    let aiResponses = [...state.aiResponses, response]
-    
-    // Auto-cleanup if exceeding limit
-    if (aiResponses.length > MAX_AI_RESPONSES) {
-      aiResponses = aiResponses.slice(-MAX_AI_RESPONSES)
-    }
-    
-    return { aiResponses }
-  }),
-  updateAIResponse: (id, updates) => set((state) => ({
-    aiResponses: state.aiResponses.map(r => 
-      r.id === id ? { ...r, ...updates } : r
-    )
-  })),
-  removeAIResponse: (id) => set((state) => ({
-    aiResponses: state.aiResponses.filter(r => r.id !== id)
-  })),
-  setLanguage: (lang) => set({ currentLanguage: lang }),
-  setSimpleEnglish: (enabled) => set({ simpleEnglish: enabled }),
-  setAiModel: (model) => set({ aiModel: model }),
-  setError: (error) => set({ error }),
-  setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
-  setInterviewContext: (context) => set({ interviewContext: context }),
-  clearTranscripts: () => set({ transcripts: [] }),
-  clearResponses: () => set({ aiResponses: [] }),
-  clearAll: () => set({
-    transcripts: [],
-    aiResponses: [],
-    sessionStartTime: null,
-    isListening: false,
-    isInterviewStarted: false,
-    error: null,
-  }),
-  addToast: (toast) => set((state) => ({
-    toasts: [...state.toasts, { ...toast, id: `toast-${Date.now()}-${Math.random()}` }]
-  })),
-  removeToast: (id) => set((state) => ({
-    toasts: state.toasts.filter(t => t.id !== id)
-  })),
-  showToast: (type, message, description) => {
-    const toast: Omit<ToastMessage, 'id'> = { type, message, description }
-    get().addToast(toast)
-  },
-}),
-    {
-      name: 'interview-copilot-storage',
-      storage: createJSONStorage(() => getLocalStorage() || ({
-        getItem: () => null,
-        setItem: () => {},
-        removeItem: () => {},
+
+      setConversationState: (state) => set({ conversationState: state }),
+
+      addUtterance: (utterance) => set((s) => {
+        const utterances = [...s.utterances, utterance].slice(-MAX_UTTERANCES)
+        return { utterances }
+      }),
+
+      addTurn: (turn) => set((s) => {
+        const turns = [...s.turns, turn].slice(-MAX_TURNS)
+        return { turns }
+      }),
+
+      setStreamingResponse: (text, id = null) => set({
+        streamingResponse: text,
+        streamingId: id ?? (text ? `stream-${Date.now()}` : null),
+      }),
+
+      appendStreamingChunk: (chunk) => set((s) => ({
+        streamingResponse: (s.streamingResponse ?? '') + chunk,
       })),
+
+      commitStreamingToTurn: () => {
+        const { streamingResponse, streamingId } = get()
+        if (!streamingResponse) return
+        
+        set((s) => ({
+          turns: [...s.turns, {
+            speaker: 'ai' as const,
+            content: streamingResponse,
+            timestamp: Date.now(),
+          }].slice(-MAX_TURNS),
+          streamingResponse: null,
+          streamingId: null,
+          conversationState: 'LISTENING',
+        }))
+      },
+
+      cancelStreaming: () => set({
+        streamingResponse: null,
+        streamingId: null,
+        conversationState: 'INTERRUPTED',
+      }),
+
+      setLanguage: (lang) => set({ currentLanguage: lang }),
+      setSimpleEnglish: (enabled) => set({ simpleEnglish: enabled }),
+      setAiModel: (model) => set({ aiModel: model }),
+      setInterviewContext: (context) => set({ interviewContext: context }),
+      setError: (error) => set({ error }),
+      
+      setInterviewStarted: (started) => set({
+        isInterviewStarted: started,
+        sessionStartTime: started ? Date.now() : null,
+        conversationState: started ? 'LISTENING' : 'IDLE',
+      }),
+
+      clearSession: () => set({
+        turns: [],
+        utterances: [],
+        streamingResponse: null,
+        streamingId: null,
+        error: null,
+        conversationState: 'LISTENING',
+      }),
+
+      reset: () => set({
+        conversationState: 'IDLE',
+        turns: [],
+        utterances: [],
+        streamingResponse: null,
+        streamingId: null,
+        error: null,
+        isInterviewStarted: false,
+        sessionStartTime: null,
+      }),
+
+      addToast: (toast) => set((s) => ({
+        toasts: [...s.toasts, { ...toast, id: `toast-${Date.now()}-${Math.random()}` }],
+      })),
+      
+      removeToast: (id) => set((s) => ({
+        toasts: s.toasts.filter(t => t.id !== id),
+      })),
+    }),
+    {
+      name: 'copilot-storage',
+      storage: createJSONStorage(() => createThrottledStorage()),
       partialize: (state) => ({
-        transcripts: state.transcripts,
-        aiResponses: state.aiResponses,
+        turns: state.turns,
         currentLanguage: state.currentLanguage,
         simpleEnglish: state.simpleEnglish,
         aiModel: state.aiModel,
         interviewContext: state.interviewContext,
-        sessionStartTime: state.sessionStartTime,
       }),
     }
   )
 )
 
+// Legacy export for compatibility during migration
+export type { Utterance, Turn, InterviewContext }
+export type TranscriptEntry = Utterance
+export type AIResponse = { id: string; type: string; content: string; timestamp: number; confidence?: number }
+export const useInterviewStore = useCopilotStore

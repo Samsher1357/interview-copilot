@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, memo, useCallback } from 'react'
 import { AlertCircle, X } from 'lucide-react'
 
 interface ErrorDisplayProps {
@@ -8,7 +8,7 @@ interface ErrorDisplayProps {
   onDismiss: () => void
 }
 
-export function ErrorDisplay({ error, onDismiss }: Readonly<ErrorDisplayProps>) {
+export const ErrorDisplay = memo(function ErrorDisplay({ error, onDismiss }: Readonly<ErrorDisplayProps>) {
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
@@ -21,6 +21,11 @@ export function ErrorDisplay({ error, onDismiss }: Readonly<ErrorDisplayProps>) 
       return () => clearTimeout(timer)
     }
   }, [error, onDismiss])
+
+  const handleDismiss = useCallback(() => {
+    setIsVisible(false)
+    setTimeout(onDismiss, 300)
+  }, [onDismiss])
 
   if (!error || !isVisible) return null
 
@@ -38,10 +43,7 @@ export function ErrorDisplay({ error, onDismiss }: Readonly<ErrorDisplayProps>) 
             </p>
           </div>
           <button
-            onClick={() => {
-              setIsVisible(false)
-              setTimeout(onDismiss, 300)
-            }}
+            onClick={handleDismiss}
             className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
             aria-label="Dismiss error"
           >
@@ -51,5 +53,5 @@ export function ErrorDisplay({ error, onDismiss }: Readonly<ErrorDisplayProps>) 
       </div>
     </div>
   )
-}
+})
 

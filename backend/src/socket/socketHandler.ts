@@ -1,18 +1,18 @@
 import { Server as HTTPServer } from 'node:http'
-import { Server as SocketIOServer } from 'socket.io'
+import { Server as SocketIOServer, Socket } from 'socket.io'
 import { langchainService } from '../services/langchainService'
-import { TranscriptEntry } from '../types'
+import { Turn } from '../types'
 
 let io: SocketIOServer | null = null
 
-export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
-  if (io) {
-    return io
-  }
+// Track active generations per socket for cancellation
+const activeGenerations = new Map<string, number>()
 
-  // Support multiple origins for Railway deployment
-  const allowedOrigins = process.env.CORS_ORIGIN 
-    ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
+  if (io) return io
+
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
     : ['http://localhost:3000']
 
   io = new SocketIOServer(httpServer, {
@@ -30,58 +30,95 @@ export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
     connectTimeout: 45000,
   })
 
-  io.on('connection', (socket) => {
+  io.on('connection', (socket: Socket) => {
     console.log('✅ Client connected:', socket.id)
+    activeGenerations.set(socket.id, -1)
 
-    // Handle streaming analysis
     socket.on('analyze:stream', async (data) => {
-      const { transcripts, language, interviewContext, simpleEnglish, aiModel } = data
+      const { turns, utteranceText, language, interviewContext, simpleEnglish, aiModel, generationId } = data
 
       try {
-        if (!transcripts || !Array.isArray(transcripts) || transcripts.length === 0) {
-          socket.emit('analyze:error', { error: 'Invalid transcripts' })
+        if (!utteranceText || typeof utteranceText !== 'string') {
+          socket.emit('analyze:error', { error: 'Invalid utterance text', generationId })
           return
         }
 
-        const trimmedTranscripts = (transcripts as TranscriptEntry[]).slice(-8)
+        // Set active generation for this socket
+        activeGenerations.set(socket.id, generationId ?? Date.now())
+        const currentGeneration = activeGenerations.get(socket.id)!
+
+        console.log(`[Socket ${socket.id}] Starting analysis (gen ${currentGeneration})`)
+
+        const validTurns: Turn[] = Array.isArray(turns) ? turns.slice(-6) : []
         let fullResponse = ''
 
         for await (const chunk of langchainService.streamAnalysis(
-          trimmedTranscripts,
+          validTurns,
+          utteranceText,
           language || 'en',
           interviewContext || {},
           simpleEnglish || false,
           aiModel || 'gpt-4o-mini'
         )) {
+          // Check if generation is still valid (not cancelled)
+          if (activeGenerations.get(socket.id) !== currentGeneration) {
+            console.log(`[Socket ${socket.id}] Generation ${currentGeneration} cancelled, stopping stream`)
+            break
+          }
+
           fullResponse += chunk
-          socket.emit('analyze:chunk', { chunk })
+          socket.emit('analyze:chunk', { chunk, generationId: currentGeneration })
         }
 
-        const parsed = {
-          intent: 'general',
-          context: 'Streamed response',
-          answer: fullResponse.trim(),
-          suggestions: [],
-          hints: [],
-          talkingPoints: [],
+        // Only emit complete if generation is still valid
+        if (activeGenerations.get(socket.id) === currentGeneration) {
+          socket.emit('analyze:complete', {
+            result: { answer: fullResponse.trim() },
+            generationId: currentGeneration,
+          })
+          console.log(`[Socket ${socket.id}] Analysis complete (gen ${currentGeneration})`)
         }
-
-        socket.emit('analyze:complete', { result: parsed })
       } catch (error) {
         console.error('Streaming error:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Analysis failed'
-        socket.emit('analyze:error', { error: errorMessage })
+        socket.emit('analyze:error', {
+          error: error instanceof Error ? error.message : 'Analysis failed',
+          generationId: data.generationId,
+        })
+      }
+    })
+
+    // Handle cancellation
+    socket.on('analyze:cancel', (data) => {
+      const { generationId } = data || {}
+      const currentGeneration = activeGenerations.get(socket.id)
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Socket ${socket.id}] Cancel requested (gen ${generationId}, current: ${currentGeneration})`)
+      }
+      
+      // Only cancel if the generation ID matches or if no specific generation provided
+      if (generationId === undefined || generationId === currentGeneration) {
+        activeGenerations.set(socket.id, -1)
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[Socket ${socket.id}] Generation ${generationId} cancelled`)
+        }
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[Socket ${socket.id}] Ignoring cancel for stale generation ${generationId}`)
+        }
       }
     })
 
     socket.on('disconnect', (reason) => {
       console.log('❌ Client disconnected:', socket.id, reason)
-      // Clean up all listeners on disconnect
+      activeGenerations.delete(socket.id)
       socket.removeAllListeners()
     })
 
     socket.on('error', (error) => {
       console.error('❌ Socket error:', error)
+      activeGenerations.delete(socket.id)
       socket.removeAllListeners()
       socket.disconnect(true)
     })
@@ -93,4 +130,3 @@ export function initializeSocketIO(httpServer: HTTPServer): SocketIOServer {
 export function getSocketIO(): SocketIOServer | null {
   return io
 }
-

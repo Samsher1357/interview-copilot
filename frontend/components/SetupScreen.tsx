@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useInterviewStore, InterviewContext } from '@/lib/store'
+import { useCopilotStore } from '@/lib/store'
+import { InterviewContext } from '@/lib/types'
 import { apiClient } from '@/lib/apiClient'
 import { 
   Briefcase, Building2, Code, GraduationCap, Award, FileText, 
@@ -21,7 +22,7 @@ export function SetupScreen({ onStart }: Readonly<SetupScreenProps>) {
     aiModel,
     setAiModel,
     setInterviewStarted
-  } = useInterviewStore()
+  } = useCopilotStore()
   
   const [formData, setFormData] = useState<InterviewContext>({
     jobRole: '',
@@ -113,13 +114,13 @@ export function SetupScreen({ onStart }: Readonly<SetupScreenProps>) {
       }
       
       // Show success toast
-      const { showToast } = useInterviewStore.getState()
-      showToast('success', 'Resume Parsed!', 'Your information has been extracted successfully')
+      const { addToast } = useCopilotStore.getState()
+      addToast({ type: 'success', message: 'Resume Parsed!', description: 'Your information has been extracted successfully' })
     } catch (error: any) {
       console.error('Resume parsing error:', error)
       setResumeError(error.message || 'Failed to parse resume. Please try pasting the text manually.')
-      const { showToast } = useInterviewStore.getState()
-      showToast('error', 'Parsing Failed', error.message || 'Failed to parse resume')
+      const { addToast } = useCopilotStore.getState()
+      addToast({ type: 'error', message: 'Parsing Failed', description: error.message || 'Failed to parse resume' })
     } finally {
       setIsParsingResume(false)
       setParsingProgress('')
@@ -165,7 +166,15 @@ export function SetupScreen({ onStart }: Readonly<SetupScreenProps>) {
   }
 
   const handleStartInterview = () => {
-    const skills = skillsInput.split(',').map(s => s.trim()).filter(s => s.length > 0)
+    // Optimized: Single pass parsing without intermediate array
+    const skills = skillsInput
+      .split(',')
+      .reduce((acc, s) => {
+        const trimmed = s.trim()
+        if (trimmed) acc.push(trimmed)
+        return acc
+      }, [] as string[])
+    
     const updatedContext = { ...formData, skills }
     setInterviewContext(updatedContext)
     // Set interview as started (this will trigger Deepgram connection)

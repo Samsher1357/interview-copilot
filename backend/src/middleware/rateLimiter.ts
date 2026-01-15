@@ -8,11 +8,9 @@ interface RateLimitConfig {
   skipFailedRequests?: boolean
 }
 
-interface RateLimitStore {
-  [key: string]: {
-    count: number
-    resetTime: number
-  }
+interface RateLimitEntry {
+  count: number
+  resetTime: number
 }
 
 /**
@@ -20,7 +18,7 @@ interface RateLimitStore {
  * For production, consider using Redis for distributed rate limiting
  */
 export class RateLimiter {
-  private store: RateLimitStore = {}
+  private store: Map<string, RateLimitEntry> = new Map()
   private cleanupInterval: NodeJS.Timeout
 
   constructor() {
@@ -47,7 +45,7 @@ export class RateLimiter {
       const now = Date.now()
 
       // Get or create rate limit entry
-      let entry = this.store[key]
+      let entry = this.store.get(key)
 
       if (!entry || now > entry.resetTime) {
         // Create new entry or reset expired one
@@ -55,7 +53,7 @@ export class RateLimiter {
           count: 0,
           resetTime: now + windowMs,
         }
-        this.store[key] = entry
+        this.store.set(key, entry)
       }
 
       // Increment counter
@@ -87,7 +85,7 @@ export class RateLimiter {
             (skipSuccessfulRequests && statusCode < 400) ||
             (skipFailedRequests && statusCode >= 400)
           ) {
-            entry.count--
+            entry!.count--
           }
           
           return originalSend.call(this, body)
@@ -113,15 +111,13 @@ export class RateLimiter {
   }
 
   /**
-   * Cleanup expired entries
+   * Cleanup expired entries (optimized with Map)
    */
   private cleanup() {
     const now = Date.now()
-    const keys = Object.keys(this.store)
-
-    for (const key of keys) {
-      if (this.store[key].resetTime < now) {
-        delete this.store[key]
+    for (const [key, entry] of this.store.entries()) {
+      if (entry.resetTime < now) {
+        this.store.delete(key)
       }
     }
   }
@@ -130,7 +126,7 @@ export class RateLimiter {
    * Clear all rate limit data
    */
   reset() {
-    this.store = {}
+    this.store.clear()
   }
 
   /**

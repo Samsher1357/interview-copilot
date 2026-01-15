@@ -1,3 +1,5 @@
+// Parakeet-style types
+
 export type ClosedBy = 'silence' | 'semantic' | 'stability' | 'interruption'
 
 export interface Utterance {
@@ -16,6 +18,23 @@ export interface Turn {
   timestamp: number
 }
 
+export type ConversationState = 
+  | 'IDLE'
+  | 'LISTENING'
+  | 'USER_SPEAKING'
+  | 'AI_THINKING'
+  | 'AI_RESPONDING'
+  | 'INTERRUPTED'
+
+export type Intent = 
+  | 'question'
+  | 'explain'
+  | 'clarify'
+  | 'acknowledge'
+  | 'filler'
+  | 'thinking'
+  | 'unknown'
+
 export interface InterviewContext {
   jobRole?: string
   company?: string
@@ -24,20 +43,4 @@ export interface InterviewContext {
   education?: string
   achievements?: string
   customNotes?: string
-}
-
-// Legacy types for compatibility
-export interface TranscriptEntry {
-  id: string
-  speaker: 'user' | 'system'
-  text: string
-  timestamp: number
-}
-
-export interface AIResponse {
-  id: string
-  type: 'suggestion' | 'hint' | 'talking-point' | 'answer'
-  content: string
-  timestamp: number
-  confidence?: number
 }

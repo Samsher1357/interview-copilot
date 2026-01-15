@@ -3,29 +3,17 @@ import { ChatOpenAI } from '@langchain/openai'
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { TranscriptEntry, InterviewContext } from '../types'
-import { buildInterviewSystemPrompt } from '../ai/promptBuilder'
-
-/* ======================================================
-   TYPES
-====================================================== */
-
-/* ======================================================
-   CONSTANTS
-====================================================== */
+import { Turn, InterviewContext } from '../types'
+import { buildSystemPrompt } from '../ai/promptBuilder'
 
 const DEFAULT_MODEL = 'gpt-4o-mini'
-const MAX_HISTORY = 20
 const STREAM_FLUSH_CHARS = 8
-const MAX_CACHE_SIZE = 10 // Maximum number of LLM instances to cache
-
-/* ======================================================
-   SERVICE
-====================================================== */
+const STREAM_FLUSH_INTERVAL_MS = 50
+const MAX_CACHE_SIZE = 10
 
 export class LangChainService {
   private readonly llmCache = new Map<string, BaseChatModel>()
-  private readonly cacheAccessOrder: string[] = [] // Track access order for LRU
+  private readonly cacheAccessOrder: string[] = []
 
   constructor() {
     if (!process.env.OPENAI_API_KEY && !process.env.GOOGLE_API_KEY) {
@@ -33,41 +21,34 @@ export class LangChainService {
     }
   }
 
-  /* ======================================================
-     PUBLIC API
-  ====================================================== */
-
-  /**
-   * 🔥 FAST PATH – real-time streaming (NO JSON)
-   * Optimized for lowest latency possible
-   */
   async *streamAnalysis(
-    transcripts: TranscriptEntry[],
+    turns: Turn[],
+    utteranceText: string,
     language = 'en',
     interviewContext?: InterviewContext,
     simpleEnglish = false,
     aiModel = DEFAULT_MODEL
   ): AsyncGenerator<string> {
-    const latest = transcripts.at(-1)
-    if (!latest || latest.speaker !== 'user') return
+    if (!utteranceText?.trim()) return
 
     try {
       const llm = this.getLLM(aiModel)
 
-      const systemPrompt = this.buildSystemPrompt({
+      const systemPrompt = buildSystemPrompt({
         language,
-        transcripts,
-        interviewContext,
-        latestQuestion: latest.text,
         simpleEnglish,
+        context: interviewContext,
+        turns,
+        utteranceText,
       })
 
       const stream = await llm.stream([
         new SystemMessage(systemPrompt),
-        new HumanMessage(latest.text),
+        new HumanMessage(utteranceText),
       ])
 
       let buffer = ''
+      let lastFlushTime = Date.now()
 
       try {
         for await (const chunk of stream) {
@@ -75,68 +56,38 @@ export class LangChainService {
           if (!token) continue
 
           buffer += token
+          const now = Date.now()
+          const timeSinceLastFlush = now - lastFlushTime
 
-          // 🔥 Flush early for real-time UX
-          if (buffer.length >= STREAM_FLUSH_CHARS || /[.!?\n]/.test(token)) {
+          const shouldFlush =
+            buffer.length >= STREAM_FLUSH_CHARS ||
+            timeSinceLastFlush >= STREAM_FLUSH_INTERVAL_MS ||
+            /[.!?\n]/.test(token)
+
+          if (shouldFlush) {
             yield buffer
             buffer = ''
+            lastFlushTime = now
           }
         }
 
         if (buffer) yield buffer
       } catch (streamError) {
-        console.error('Stream iteration error:', streamError)
-        // Yield any buffered content before throwing
         if (buffer) yield buffer
-        throw new Error('Streaming interrupted: ' + (streamError instanceof Error ? streamError.message : 'Unknown error'))
+        throw new Error('Streaming interrupted: ' + (streamError instanceof Error ? streamError.message : 'Unknown'))
       }
     } catch (error) {
       console.error('LangChain streaming error:', error)
-      throw new Error('AI analysis failed: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      throw new Error('AI analysis failed: ' + (error instanceof Error ? error.message : 'Unknown'))
     }
   }
 
-  /* ======================================================
-     PROMPT BUILDER
-  ====================================================== */
-
-  private buildSystemPrompt(opts: {
-    language: string
-    transcripts: TranscriptEntry[]
-    interviewContext?: InterviewContext
-    latestQuestion: string
-    simpleEnglish?: boolean
-  }): string {
-    const conversation = this.formatConversation(opts.transcripts)
-
-    return buildInterviewSystemPrompt({
-      language: opts.language,
-      simpleEnglish: opts.simpleEnglish,
-      context: opts.interviewContext,
-      conversationHistory: conversation,
-      question: opts.latestQuestion,
-    })
-  }
-
-  private formatConversation(transcripts: TranscriptEntry[]): string {
-    return transcripts
-      .slice(-MAX_HISTORY)
-      .map(t => `${t.speaker === 'user' ? 'Candidate' : 'System'}: ${t.text}`)
-      .join('\n')
-  }
-
-  /* ======================================================
-     UTILITIES
-  ====================================================== */
-
   private getLLM(model: string): BaseChatModel {
-    // Check cache and update access order
     if (this.llmCache.has(model)) {
       this.updateCacheAccess(model)
       return this.llmCache.get(model)!
     }
 
-    // Create new LLM instance
     const maxTokens = Number(process.env.AI_MAX_TOKENS ?? 1200)
     let llm: BaseChatModel
 
@@ -159,30 +110,19 @@ export class LangChainService {
       })
     }
 
-    // Add to cache with LRU eviction
     this.addToCache(model, llm)
     return llm
   }
 
-  /**
-   * Add LLM to cache with LRU eviction
-   */
   private addToCache(model: string, llm: BaseChatModel) {
-    // Evict least recently used if cache is full
     if (this.llmCache.size >= MAX_CACHE_SIZE) {
       const lruModel = this.cacheAccessOrder.shift()
-      if (lruModel) {
-        this.llmCache.delete(lruModel)
-      }
+      if (lruModel) this.llmCache.delete(lruModel)
     }
-
     this.llmCache.set(model, llm)
     this.cacheAccessOrder.push(model)
   }
 
-  /**
-   * Update cache access order for LRU
-   */
   private updateCacheAccess(model: string) {
     const index = this.cacheAccessOrder.indexOf(model)
     if (index > -1) {
@@ -191,17 +131,10 @@ export class LangChainService {
     }
   }
 
-  /**
-   * Clear cache (useful for testing or memory management)
-   */
   clearCache() {
     this.llmCache.clear()
     this.cacheAccessOrder.length = 0
   }
 }
-
-/* ======================================================
-   SINGLETON
-====================================================== */
 
 export const langchainService = new LangChainService()

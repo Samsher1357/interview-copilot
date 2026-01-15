@@ -1,10 +1,12 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, memo } from 'react'
+import { useDebounce } from '@/lib/hooks/useDebounce'
 
 interface FormattedContentProps {
   content: string
   className?: string
+  isStreaming?: boolean
 }
 
 /* ======================================================
@@ -15,6 +17,16 @@ type Block =
   | { type: 'text'; content: string }
   | { type: 'inline-code'; content: string }
   | { type: 'code'; content: string; language?: string }
+
+/* ======================================================
+   PRE-COMPILED REGEX PATTERNS (Performance optimization)
+====================================================== */
+
+const CODE_BLOCK_REGEX = /```(\w+)?\n?([\s\S]*?)```/g
+const INLINE_CODE_REGEX = /`([^`\n]+)`/g
+const HIGHLIGHT_REGEX = /(==[^=]+==)|(\*\*[^*]+\*\*)/g
+const BULLET_REGEX = /^[-•*]\s+/
+const NUMBERED_REGEX = /^\d+\.\s+/
 
 /* ======================================================
    PARSERS (PURE FUNCTIONS)
@@ -44,11 +56,13 @@ function parseQA(content: string): { question: string | null; answer: string } {
  */
 function parseBlocks(text: string): Block[] {
   const blocks: Block[] = []
-  const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g
   let lastIndex = 0
   let match: RegExpExecArray | null
 
-  while ((match = codeBlockRegex.exec(text))) {
+  // Reset regex state
+  CODE_BLOCK_REGEX.lastIndex = 0
+
+  while ((match = CODE_BLOCK_REGEX.exec(text))) {
     if (match.index > lastIndex) {
       blocks.push(...parseInline(text.slice(lastIndex, match.index)))
     }
@@ -74,11 +88,13 @@ function parseBlocks(text: string): Block[] {
  */
 function parseInline(text: string): Block[] {
   const parts: Block[] = []
-  const regex = /`([^`\n]+)`/g
   let lastIndex = 0
   let match: RegExpExecArray | null
 
-  while ((match = regex.exec(text))) {
+  // Reset regex state
+  INLINE_CODE_REGEX.lastIndex = 0
+
+  while ((match = INLINE_CODE_REGEX.exec(text))) {
     if (match.index > lastIndex) {
       parts.push({ type: 'text', content: text.slice(lastIndex, match.index) })
     }
@@ -98,12 +114,14 @@ function parseInline(text: string): Block[] {
 ====================================================== */
 
 function renderHighlights(text: string): JSX.Element {
-  const regex = /(==[^=]+==)|(\*\*[^*]+\*\*)/g
   const parts: JSX.Element[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null
 
-  while ((match = regex.exec(text))) {
+  // Reset regex state
+  HIGHLIGHT_REGEX.lastIndex = 0
+
+  while ((match = HIGHLIGHT_REGEX.exec(text))) {
     if (match.index > lastIndex) {
       parts.push(<span key={lastIndex}>{text.slice(lastIndex, match.index)}</span>)
     }
@@ -139,11 +157,16 @@ function renderHighlights(text: string): JSX.Element {
    COMPONENT
 ====================================================== */
 
-export function FormattedContent({
+export const FormattedContent = memo(function FormattedContent({
   content,
   className = '',
+  isStreaming = false,
 }: Readonly<FormattedContentProps>) {
-  const { question, answer } = useMemo(() => parseQA(content), [content])
+  // Debounce content during streaming to reduce parsing overhead
+  const debouncedContent = useDebounce(content, isStreaming ? 100 : 0)
+  const contentToUse = isStreaming ? debouncedContent : content
+  
+  const { question, answer } = useMemo(() => parseQA(contentToUse), [contentToUse])
 
   const blocks = useMemo(() => parseBlocks(answer), [answer])
 
@@ -207,18 +230,18 @@ export function FormattedContent({
                 const t = line.trim()
                 if (!t) return <div key={idx} className="h-1 sm:h-2" />
 
-                if (/^[-•*]\s+/.test(t)) {
+                if (BULLET_REGEX.test(t)) {
                   return (
                     <div key={idx} className="flex gap-1.5 sm:gap-2 my-1.5 sm:my-2 items-start">
                       <span className="text-purple-600 dark:text-purple-400 font-bold text-xs sm:text-sm flex-shrink-0 leading-relaxed">•</span>
                       <span className="text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-200 flex-1">
-                        {renderHighlights(t.replace(/^[-•*]\s+/, ''))}
+                        {renderHighlights(t.replace(BULLET_REGEX, ''))}
                       </span>
                     </div>
                   )
                 }
 
-                if (/^\d+\.\s+/.test(t)) {
+                if (NUMBERED_REGEX.test(t)) {
                   const [num, rest] = t.split('.', 2)
                   return (
                     <div key={idx} className="flex gap-1.5 sm:gap-2 my-1.5 sm:my-2 items-start">
@@ -242,4 +265,4 @@ export function FormattedContent({
       </div>
     </div>
   )
-}
+})
