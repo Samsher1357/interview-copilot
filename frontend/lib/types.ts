@@ -33,6 +33,7 @@ export type Intent =
   | 'acknowledge'
   | 'filler'
   | 'thinking'
+  | 'statement'
   | 'unknown'
 
 export interface InterviewContext {

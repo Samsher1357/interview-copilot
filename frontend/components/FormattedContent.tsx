@@ -38,16 +38,29 @@ const NUMBERED_REGEX = /^\d+\.\s+/
 function parseQA(content: string): { question: string | null; answer: string } {
   if (!content) return { question: null, answer: '' }
 
+  // Match question with optional emoji and extract it
   const qMatch = content.match(/(?:💬\s*)?Question:\s*(.+?)(?=\n|$)/i)
-  const aMatch = content.match(/(?:⭐\s*)?Answer:\s*([\s\S]*)/i)
-
+  
   if (!qMatch) {
     return { question: null, answer: content.trim() }
   }
 
+  const question = qMatch[1].trim()
+  
+  // Remove the entire question line from content and get the answer
+  // This prevents the question from appearing twice
+  const answerStartIndex = content.indexOf(qMatch[0]) + qMatch[0].length
+  let answer = content.slice(answerStartIndex).trim()
+  
+  // Also remove the "Answer:" prefix if present
+  const answerPrefixMatch = answer.match(/^(?:⭐\s*)?Answer:\s*/i)
+  if (answerPrefixMatch) {
+    answer = answer.slice(answerPrefixMatch[0].length).trim()
+  }
+
   return {
-    question: qMatch[1].trim(),
-    answer: (aMatch?.[1] ?? '').trim(),
+    question,
+    answer,
   }
 }
 

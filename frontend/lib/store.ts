@@ -54,14 +54,19 @@ export interface CopilotState {
 }
 
 const getLocalStorage = () => {
+  if (typeof window === 'undefined') return undefined
   try {
-    return typeof window !== 'undefined' ? window.localStorage : undefined
+    return window.localStorage
   } catch {
     return undefined
   }
 }
 
 const createThrottledStorage = () => {
+  if (typeof window === 'undefined') {
+    return { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+  }
+  
   const storage = getLocalStorage()
   if (!storage) {
     return { getItem: () => null, setItem: () => {}, removeItem: () => {} }
@@ -197,6 +202,7 @@ export const useCopilotStore = create<CopilotState>()(
         aiModel: state.aiModel,
         interviewContext: state.interviewContext,
       }),
+      skipHydration: typeof window === 'undefined',
     }
   )
 )

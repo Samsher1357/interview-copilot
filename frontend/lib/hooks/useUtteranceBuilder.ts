@@ -5,13 +5,13 @@ import { Utterance, ClosedBy } from '../types'
 import { detectTurnEnd } from '../utils/turnDetector'
 import { textSimilarity, confidenceVariance } from '../utils/textSimilarity'
 
-// Conservative timing
-const SILENCE_THRESHOLD_MS = 1800
-const STABILITY_WINDOW_MS = 500
-const MIN_WORDS = 5
-const MIN_CONFIDENCE = 0.7
-const TEXT_SIMILARITY_THRESHOLD = 0.85  // For ASR variance guard
-const MAX_CONFIDENCE_VARIANCE = 0.15    // Reject if confidence too unstable
+// Balanced timing - tuned for responsiveness
+const SILENCE_THRESHOLD_MS = 1400      // Reduced from 1800ms
+const STABILITY_WINDOW_MS = 400        // Reduced from 500ms
+const MIN_WORDS = 4                    // Reduced from 5
+const MIN_CONFIDENCE = 0.65            // Reduced from 0.7
+const TEXT_SIMILARITY_THRESHOLD = 0.85 // For ASR variance guard
+const MAX_CONFIDENCE_VARIANCE = 0.18   // Slightly more tolerant (was 0.15)
 
 interface UtteranceBuilderConfig {
   onUtteranceComplete: (utterance: Utterance) => void
@@ -145,7 +145,7 @@ export function useUtteranceBuilder(config: UtteranceBuilderConfig) {
       const consecutiveFinals = consecutiveFinalsRef.current
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[UtteranceBuilder] Stability check: words=${wordCount}, conf=${avgConfidence.toFixed(2)}, finals=${consecutiveFinals}`)
+        console.log(`[UtteranceBuilder] Stability check: words=${wordCount}, conf=${avgConfidence.toFixed(2)}, finals=${consecutiveFinals}, text="${text.slice(0, 50)}..."`)
       }
 
       const detection = detectTurnEnd(
@@ -160,9 +160,14 @@ export function useUtteranceBuilder(config: UtteranceBuilderConfig) {
         { silenceThresholdMs: SILENCE_THRESHOLD_MS, minWords: MIN_WORDS, minConfidence: MIN_CONFIDENCE }
       )
 
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[UtteranceBuilder] Detection result: shouldClose=${detection.shouldClose}, closedBy=${detection.closedBy}, reason=${detection.reason}`)
+      }
+
       if (detection.shouldClose) {
         commitUtterance(detection.closedBy)
       } else {
+        // If not closing, schedule silence check as fallback
         scheduleSilenceCheck()
       }
     }, STABILITY_WINDOW_MS)
